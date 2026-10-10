@@ -1,0 +1,20 @@
+{
+  "name": "moodle-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix web ci && npm --prefix web run build && go run github.com/syumai/workers-go/cmd/workers-assets-gen -mode=go && GOOS=js GOARCH=wasm go build -o ./build/app.wasm .",
+    "dev": "wrangler dev",
+    "start": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "go test -race ./... && npm --prefix web test",
+    "check": "go vet ./... && npm --prefix web run check"
+  },
+  "devDependencies": {
+    "wrangler": "4.149.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "workerd@1.20261006.1": true
+  }
+}

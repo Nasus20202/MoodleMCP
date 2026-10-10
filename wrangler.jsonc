@@ -1,0 +1,9 @@
+{
+  "name": "moodle-mcp",
+  "main": "./build/worker.mjs",
+  "compatibility_date": "2026-10-01",
+  "build": { "command": "npm run build" },
+  "assets": { "directory": "./web/dist", "run_worker_first": ["/mcp", "/api/*"] },
+  "observability": { "enabled": true },
+  "vars": { "MOODLE_URL": "https://enauczanie.pg.edu.pl/2025", "LOG_LEVEL": "info" }
+}

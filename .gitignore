@@ -1,0 +1,7 @@
+build
+node_modules
+.wrangler
+.dev.vars
+/moodle-token
+web/dist
+web/node_modules
