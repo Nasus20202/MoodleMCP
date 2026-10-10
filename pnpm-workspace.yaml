@@ -1,0 +1,9 @@
+packages:
+  - packages/*
+
+# Dependency build scripts must be approved explicitly (anything else fails the install).
+allowBuilds:
+  esbuild: true
+  workerd: true
+
+minimumReleaseAge: 0

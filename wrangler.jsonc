@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "moodle-mcp",
+  "main": "packages/server/src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "routes": [{ "pattern": "moodlemcp.nasus.dev", "custom_domain": true }],
+  "assets": {
+    "directory": "packages/web/dist",
+    "run_worker_first": ["/mcp", "/api/*"],
+  },
+  "build": {
+    "command": "pnpm run build",
+    "watch_dir": "packages/web/src",
+  },
+  "observability": { "enabled": true },
+  "vars": {
+    "MOODLE_URL": "https://enauczanie.pg.edu.pl/2025",
+    "ALLOWED_MOODLE_HOSTS": "*",
+    "LOG_LEVEL": "info",
+  },
+}
