@@ -7,10 +7,13 @@ export const DEFAULT_MOODLE_URL = 'https://enauczanie.pg.edu.pl/2025';
 /** Wildcard for ALLOWED_MOODLE_HOSTS: any public https host. */
 export const ANY_HOST = '*';
 
+const MIN_OAUTH_SECRET_LENGTH = 32;
+
 const envSchema = z.object({
   MOODLE_URL: z.url({ protocol: /^https?$/ }).default(DEFAULT_MOODLE_URL),
   ALLOWED_MOODLE_HOSTS: z.string().default(ANY_HOST),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+  OAUTH_SECRET: z.string().min(MIN_OAUTH_SECRET_LENGTH).optional(),
 });
 
 export interface AppConfig {
@@ -21,6 +24,8 @@ export interface AppConfig {
   /** Permit http and non-public hosts. For tests and local development only. */
   allowInsecureSites: boolean;
   logLevel: LogLevel;
+  /** Key for the OAuth tokens (see `oauth/`). Without it OAuth is off and only raw Moodle tokens work. */
+  oauthSecret?: string;
 }
 
 /** Reads and validates the Worker's environment bindings. Throws with a readable message when invalid. */
@@ -36,5 +41,6 @@ export function loadConfig(
       .filter(Boolean),
     allowInsecureSites: false,
     logLevel: parsed.data.LOG_LEVEL,
+    ...(parsed.data.OAUTH_SECRET && { oauthSecret: parsed.data.OAUTH_SECRET }),
   };
 }

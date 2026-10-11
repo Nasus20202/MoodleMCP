@@ -212,7 +212,13 @@ describe('/api', () => {
   it('GET /api/config returns the default site', async () => {
     const { app } = setup();
     const body = await (await app.request('/api/config')).json<ConfigResponse>();
-    expect(body).toEqual({ moodleUrl: TEST_SITE });
+    expect(body).toEqual({ moodleUrl: TEST_SITE, oauth: false });
+  });
+
+  it('GET /api/config reports when OAuth is enabled', async () => {
+    const { app } = setup(undefined, testConfig({ oauthSecret: 'x'.repeat(32) }));
+    const body = await (await app.request('/api/config')).json<ConfigResponse>();
+    expect(body.oauth).toBe(true);
   });
 
   it('GET /api/tools returns the catalog without needing a token', async () => {

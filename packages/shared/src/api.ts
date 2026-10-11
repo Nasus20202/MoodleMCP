@@ -3,6 +3,8 @@
 export interface ConfigResponse {
   /** The server's default Moodle site. */
   moodleUrl: string;
+  /** Whether the server offers OAuth sign-in, so clients need no header. */
+  oauth: boolean;
 }
 
 export interface SchemaProperty {

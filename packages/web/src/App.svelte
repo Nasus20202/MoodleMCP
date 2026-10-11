@@ -6,6 +6,7 @@
   import Step from './components/Step.svelte';
   import TokenStep from './components/TokenStep.svelte';
   import ToolList from './components/ToolList.svelte';
+  import { REPO_URL } from './lib/constants';
   import { loadDefaultSite } from './lib/session.svelte';
 
   onMount(() => {
@@ -22,6 +23,6 @@
   <Step n={2} title="Add it to your agent"><ConnectStep /></Step>
   <Step n={3} title="What your agent can do"><ToolList /></Step>
   <footer class="pt-4 text-center text-xs text-slate-500">
-    Cannot modify anything in Moodle · token is sent only as a request header
+    <a class="link" href={REPO_URL} target="_blank" rel="noopener noreferrer">Source on GitHub</a>
   </footer>
 </main>

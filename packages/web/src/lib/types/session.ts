@@ -7,4 +7,6 @@ export interface Session {
   site: string;
   /** The server's default site (MOODLE_URL), used to decide whether a site header is needed. */
   defaultSite: string;
+  /** Whether the server offers OAuth sign-in. */
+  oauth: boolean;
 }

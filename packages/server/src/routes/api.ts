@@ -14,14 +14,14 @@ const CACHE_SECONDS = 300;
 const exchangeRequest = z.object({ qr: z.string().min(1).max(MAX_EXCHANGE_BODY_BYTES) });
 
 /** The JSON API behind the setup page. */
-export function apiRoutes(deps: { policy: SitePolicy; fetch: typeof fetch }): Hono {
+export function apiRoutes(deps: { policy: SitePolicy; fetch: typeof fetch; oauth: boolean }): Hono {
   const { policy } = deps;
   const catalog = toolCatalog();
 
   return new Hono()
     .get('/api/config', (c) => {
       c.header('Cache-Control', `public, max-age=${CACHE_SECONDS}`);
-      return c.json<ConfigResponse>({ moodleUrl: policy.defaultUrl });
+      return c.json<ConfigResponse>({ moodleUrl: policy.defaultUrl, oauth: deps.oauth });
     })
     .get('/api/tools', (c) => {
       c.header('Cache-Control', `public, max-age=${CACHE_SECONDS}`);

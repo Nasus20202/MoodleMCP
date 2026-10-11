@@ -46,4 +46,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           packageManager: pnpm
+          secrets: OAUTH_SECRET
           command: deploy
+        env:
+          OAUTH_SECRET: ${{ secrets.OAUTH_SECRET }}
