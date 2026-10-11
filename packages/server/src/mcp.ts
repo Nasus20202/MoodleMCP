@@ -22,6 +22,16 @@ const callerExtra = z.object({ site: z.string(), logFields: z.record(z.string(),
 
 const CLIENT_ID = 'moodle-token';
 
+/** Orientation for the model: the order tools are meant to be chained in, and what is out of scope. */
+const SERVER_INSTRUCTIONS = [
+  "Read-only access to the user's Moodle (e-learning) account. Nothing can be changed, submitted or posted.",
+  'Start with list_courses to get course ids. Use get_course_contents for a course outline; it lists files with a',
+  '`fileurl` that read_file turns into text (PDF, Word, PowerPoint, HTML, text, images).',
+  'Ids differ per tool: ids you pass come from the output of the listing tool named in each argument. Timestamps',
+  'are Unix seconds. Course names can contain {mlang xx}...{mlang} markup: read the part in the right language.',
+  'For "what is due soon?" use get_upcoming_events.',
+].join(' ');
+
 /**
  * The stateless MCP endpoint. A fresh server is built for every request, bound to that request's
  * caller, so nothing is shared between users and nothing is stored.
@@ -40,7 +50,10 @@ export function createMcpEndpoint(deps: { fetch: typeof fetch; logger: Logger })
         fetch: deps.fetch,
         logger,
       });
-      const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
+      const server = new McpServer(
+        { name: SERVER_NAME, version: SERVER_VERSION },
+        { instructions: SERVER_INSTRUCTIONS },
+      );
       registerTools(server, client, logger);
       return server;
     },

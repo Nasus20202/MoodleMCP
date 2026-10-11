@@ -3,97 +3,271 @@ import * as z from 'zod/v4';
 import { MoodleFunction } from '../moodle/functions.ts';
 import { defineTool } from './define.ts';
 import { ToolName } from './names.ts';
+import { readFileTool } from './read-file.ts';
 
-const courseId = z.number().int().positive().describe('Moodle course id (from list_courses)');
-const assignmentId = z.number().int().positive().describe('assignment instance id (from list_assignments)');
-const forumId = z.number().int().positive().describe('forum instance id (from list_forums)');
+const id = (describe: string) => z.number().int().positive().describe(describe);
+const courseId = id('Moodle course id: the `id` of a course from list_courses or search_courses');
+const forumId = id('forum id: the `id` of a forum from list_forums');
 const noInput = z.object({});
 const courseInput = z.object({ course_id: courseId });
 
 /** Many Moodle functions take an array parameter, which its REST protocol spells `name[0]=…`. */
 const courseIds = ({ course_id }: z.output<typeof courseInput>) => ({ 'courseids[0]': course_id });
 
+/** Appended to descriptions of tools whose output has timestamps; models otherwise misread them. */
+const TIMES = 'All timestamps are Unix seconds.';
+
 export const TOOLS = [
   defineTool({
     name: ToolName.GetSiteInfo,
-    description: 'Show the Moodle site and the signed-in user (name, user id).',
+    description:
+      'Show which Moodle site this is and who is signed in (name, user id, Moodle version). Rarely needed: ' +
+      'the other tools already know the user. Use it to check that the connection works.',
     input: noInput,
     fn: MoodleFunction.SiteInfo,
     params: () => ({}),
   }),
   defineTool({
     name: ToolName.ListCourses,
-    description: 'List courses the user is enrolled in.',
+    description:
+      'List the courses the user is enrolled in, with their ids: start here, because almost every other tool ' +
+      'needs a `course_id` from this list. Course names may contain multilingual markup like ' +
+      '`{mlang pl}Nazwa{mlang}{mlang en}Name{mlang}`; use the part in the language the user speaks.',
     input: noInput,
     fn: MoodleFunction.UserCourses,
     params: async (_, client) => ({ userid: await client.userId() }),
   }),
   defineTool({
     name: ToolName.SearchCourses,
-    description: 'Search all visible courses on the site by name.',
+    description:
+      'Search ALL visible courses on the site by name, including ones the user is not enrolled in. To find ' +
+      "one of the user's own courses, use list_courses instead.",
     input: z.object({ query: z.string().min(1).describe('text to search for in course names') }),
     fn: MoodleFunction.SearchCourses,
     params: ({ query }) => ({ criterianame: 'search', criteriavalue: query }),
   }),
   defineTool({
     name: ToolName.GetCourseContents,
-    description: "List a course's sections, activities and attached files.",
+    description:
+      'Show the full outline of a course: every section with its activities (files, pages, assignments, ' +
+      'quizzes, forums, links, labels) in the order students see them. Files and folders list their ' +
+      '`fileurl`; pass that value to read_file to read the document. Each activity has an `id` (cmid), a ' +
+      '`modname` (type) and an `instance` id; the instance id is what list_assignments, list_forums, ' +
+      'list_quizzes, etc. call `assign_id`/`forum_id`/`quiz_id`. This is the best first look at a course, ' +
+      'but the output is large: prefer list_resources, list_assignments or list_pages when you only need one kind.',
     input: courseInput,
     fn: MoodleFunction.CourseContents,
     params: ({ course_id }) => ({ courseid: course_id }),
   }),
   defineTool({
+    name: ToolName.GetCourseModule,
+    description:
+      'Look up one activity by its course-module id (cmid) and get its type (`modname`), course and ' +
+      '`instance` id. Use this when the user gives a Moodle link such as `.../mod/assign/view.php?id=123`: the ' +
+      '`id` in the link is the cmid. Then call the matching tool with the instance id.',
+    input: z.object({
+      cmid: id(
+        'course-module id: the `id` in a Moodle activity link, or `id` of a module in get_course_contents',
+      ),
+    }),
+    fn: MoodleFunction.CourseModule,
+    params: ({ cmid }) => ({ cmid }),
+  }),
+  readFileTool,
+  defineTool({
+    name: ToolName.ListResources,
+    description:
+      "List a course's file resources (slides, notes, documents) with each file's name, size, type and " +
+      '`fileurl`. A lighter alternative to get_course_contents when you only want the files. Pass a ' +
+      '`fileurl` to read_file to read it. Files inside folders are only shown by get_course_contents. ' +
+      TIMES,
+    input: courseInput,
+    fn: MoodleFunction.Resources,
+    params: courseIds,
+  }),
+  defineTool({
+    name: ToolName.ListPages,
+    description:
+      "List a course's 'Page' activities including their full HTML content, which often holds the actual " +
+      'course material or instructions. Embedded files are linked by `fileurl` for read_file.',
+    input: courseInput,
+    fn: MoodleFunction.Pages,
+    params: courseIds,
+  }),
+  defineTool({
+    name: ToolName.ListUrls,
+    description:
+      'List the external links (URL activities) a course points to, with their address and description. ' +
+      'You cannot open the links; give them to the user.',
+    input: courseInput,
+    fn: MoodleFunction.Urls,
+    params: courseIds,
+  }),
+  defineTool({
+    name: ToolName.ListLabels,
+    description:
+      "List a course's text labels: the headings, announcements and instructions placed between activities, " +
+      'as HTML. Useful because this text is part of the course material but is not an activity of its own.',
+    input: courseInput,
+    fn: MoodleFunction.Labels,
+    params: courseIds,
+  }),
+  defineTool({
+    name: ToolName.ListWikis,
+    description:
+      "List a course's wikis. Take a wiki's `id` and call get_wiki_pages to read its pages. Group wikis " +
+      'appear once per accessible group or student.',
+    input: courseInput,
+    fn: MoodleFunction.Wikis,
+    params: courseIds,
+  }),
+  defineTool({
+    name: ToolName.GetWikiPages,
+    description:
+      'Read the pages of a wiki, including their HTML content (`cachedcontent`). `wiki_id` is the `id` of a wiki ' +
+      'from list_wikis. ' +
+      TIMES,
+    input: z.object({ wiki_id: id('wiki id: the `id` of a wiki from list_wikis') }),
+    fn: MoodleFunction.WikiPages,
+    params: ({ wiki_id }) => ({ wikiid: wiki_id }),
+  }),
+  defineTool({
     name: ToolName.ListAssignments,
-    description: 'List assignments of a course with due dates.',
+    description:
+      "List a course's assignments with description, due date and attached files. Each assignment's `id` is the " +
+      '`assign_id` for get_submission_status. Task files can be read with read_file. ' +
+      TIMES,
     input: courseInput,
     fn: MoodleFunction.Assignments,
     params: courseIds,
   }),
   defineTool({
     name: ToolName.GetSubmissionStatus,
-    description: "Show the user's submission and grading status for an assignment.",
-    input: z.object({ assign_id: assignmentId }),
+    description:
+      "Show the signed-in user's own submission for an assignment: whether it was submitted, its grade and the " +
+      "teacher's feedback. `assign_id` is the `id` of an assignment from list_assignments (not the cmid).",
+    input: z.object({ assign_id: id('assignment id: the `id` of an assignment from list_assignments') }),
     fn: MoodleFunction.SubmissionStatus,
     params: ({ assign_id }) => ({ assignid: assign_id }),
   }),
   defineTool({
+    name: ToolName.ListQuizzes,
+    description:
+      "List a course's quizzes with time limit, open/close dates, attempts allowed and grade settings. Each " +
+      "quiz's `id` is the `quiz_id` for get_quiz_attempts. " +
+      TIMES,
+    input: courseInput,
+    fn: MoodleFunction.Quizzes,
+    params: courseIds,
+  }),
+  defineTool({
+    name: ToolName.GetQuizAttempts,
+    description:
+      "List the signed-in user's own attempts at a quiz, with state, score and times. An attempt's `id` is the " +
+      '`attempt_id` for get_quiz_attempt_review. Returns an empty list if the user has not tried it. ' +
+      TIMES,
+    input: z.object({ quiz_id: id('quiz id: the `id` of a quiz from list_quizzes') }),
+    fn: MoodleFunction.QuizAttempts,
+    params: async ({ quiz_id }, client) => ({
+      quizid: quiz_id,
+      userid: await client.userId(),
+      status: 'all',
+    }),
+  }),
+  defineTool({
+    name: ToolName.GetQuizAttemptReview,
+    description:
+      "Review one of the user's finished quiz attempts: each question, the user's answer, and (when the quiz " +
+      'allows it) the correct answer, marks and feedback. Fails if the teacher has not enabled review yet.',
+    input: z.object({ attempt_id: id('attempt id: the `id` of a finished attempt from get_quiz_attempts') }),
+    fn: MoodleFunction.QuizAttemptReview,
+    params: ({ attempt_id }) => ({ attemptid: attempt_id, page: -1 }),
+  }),
+  defineTool({
     name: ToolName.GetUpcomingEvents,
-    description: 'Show upcoming calendar events (deadlines, classes).',
+    description:
+      'Show what is coming up in the next weeks across ALL courses: assignment deadlines, quiz openings, ' +
+      'classes and personal events. The best answer to "what is due soon?". For one course, use ' +
+      'get_course_events. ' +
+      TIMES,
     input: noInput,
     fn: MoodleFunction.UpcomingEvents,
     params: () => ({}),
   }),
   defineTool({
+    name: ToolName.GetCourseEvents,
+    description:
+      'Show the actionable calendar events (deadlines, quiz and assignment dates) of ONE course, including ' +
+      'whether each is still open. For everything across courses, use get_upcoming_events. ' +
+      TIMES,
+    input: courseInput,
+    fn: MoodleFunction.CourseEvents,
+    params: ({ course_id }) => ({ courseid: course_id }),
+  }),
+  defineTool({
+    name: ToolName.GetCourseCompletion,
+    description:
+      "Show which of a course's activities the user has completed. Empty if the course does not track " +
+      'completion.',
+    input: courseInput,
+    fn: MoodleFunction.CourseCompletion,
+    params: async ({ course_id }, client) => ({ courseid: course_id, userid: await client.userId() }),
+  }),
+  defineTool({
     name: ToolName.GetGrades,
-    description: "Show the user's grade items for a course.",
+    description:
+      "Show the user's grade for every item in one course (assignments, quizzes, totals) with feedback and " +
+      'ranges. For the overall grade of every course at once, use get_grades_overview.',
     input: courseInput,
     fn: MoodleFunction.GradeItems,
     params: async ({ course_id }, client) => ({ courseid: course_id, userid: await client.userId() }),
   }),
   defineTool({
+    name: ToolName.GetGradesOverview,
+    description:
+      "Show the user's overall grade in every enrolled course in one call. A `-` means no grade yet. For " +
+      'the breakdown inside a course, use get_grades.',
+    input: noInput,
+    fn: MoodleFunction.CourseGrades,
+    params: async (_, client) => ({ userid: await client.userId() }),
+  }),
+  defineTool({
     name: ToolName.ListForums,
-    description: 'List forums of a course.',
+    description:
+      "List a course's forums (announcements, discussion boards). A forum's `id` is the `forum_id` for " +
+      'list_forum_discussions.',
     input: courseInput,
     fn: MoodleFunction.Forums,
     params: courseIds,
   }),
   defineTool({
     name: ToolName.ListForumDiscussions,
-    description: 'List discussions in a forum.',
+    description:
+      "List the discussion topics in a forum, newest first, with author, time and a preview. A topic's " +
+      '`discussion` field is the `discussion_id` for get_forum_posts. Course announcements live in the ' +
+      'forum named "Announcements"/"Ogłoszenia". ' +
+      TIMES,
     input: z.object({ forum_id: forumId }),
     fn: MoodleFunction.ForumDiscussions,
     params: ({ forum_id }) => ({ forumid: forum_id }),
   }),
   defineTool({
-    name: ToolName.ListPages,
-    description: "List 'Page' resources of a course including their HTML content.",
-    input: courseInput,
-    fn: MoodleFunction.Pages,
-    params: courseIds,
+    name: ToolName.GetForumPosts,
+    description:
+      'Read all posts of one forum discussion, oldest first, including the full message text and attachments ' +
+      '(read them with read_file). `discussion_id` is the `discussion` field from list_forum_discussions. ' +
+      TIMES,
+    input: z.object({
+      discussion_id: id('discussion id: the `discussion` field of a topic from list_forum_discussions'),
+    }),
+    fn: MoodleFunction.ForumPosts,
+    params: ({ discussion_id }) => ({ discussionid: discussion_id, sortby: 'created', sortdirection: 'ASC' }),
   }),
   defineTool({
     name: ToolName.GetNotifications,
-    description: "Show the user's recent Moodle notifications.",
+    description:
+      "Show the user's recent Moodle notifications (new grades, forum replies, assignment feedback), newest " +
+      'first.',
     input: noInput,
     fn: MoodleFunction.PopupNotifications,
     params: async (_, client) => ({ useridto: await client.userId() }),

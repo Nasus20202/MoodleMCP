@@ -1,5 +1,6 @@
 import { type Logger, silentLogger } from '../logger.ts';
 import { MoodleError, MoodleTransportError } from './errors.ts';
+import { resolveFileUrl } from './file-url.ts';
 import { isAllowedFunction, MoodleFunction } from './functions.ts';
 
 /** Moodle must see a "MoodleMobile" user agent for the QR login exchange; we use it everywhere. */
@@ -56,12 +57,13 @@ export class MoodleClient {
       body.set('moodlewsrestformat', 'json');
 
       const result = await this.#post<T>(`${this.#baseUrl}/webservice/rest/server.php`, body);
-      this.#log.debug('moodle call', { function: fn, ms: Date.now() - started });
+      this.#log.info('moodle call', { function: fn, ok: true, ms: Date.now() - started });
       return result;
     } catch (error) {
       // Never log the token or parameter values; they identify the user.
       this.#log.warn('moodle call failed', {
         function: fn,
+        ok: false,
         ms: Date.now() - started,
         error: error instanceof Error ? error.message : String(error),
         cause: error instanceof Error && error.cause instanceof Error ? error.cause.message : undefined,
@@ -79,6 +81,67 @@ export class MoodleClient {
     return this.#userId;
   }
 
+  /**
+   * Downloads a file the token owner may read (a read-only GET). `fileUrl` must be on this site's
+   * file server; redirects are refused so the token cannot be forwarded elsewhere.
+   */
+  async download(fileUrl: string, maxBytes: number, accept?: FileFilter): Promise<DownloadedFile> {
+    const url = resolveFileUrl(this.#baseUrl, fileUrl, this.#token);
+    const started = Date.now();
+    try {
+      const file = await this.#get(url, maxBytes, accept);
+      this.#log.info('moodle download', {
+        ok: true,
+        skipped: file.skipped,
+        mime: file.mimeType,
+        bytes: file.bytes.byteLength,
+        ms: Date.now() - started,
+      });
+      return file;
+    } catch (error) {
+      // The URL carries the token, so it is never logged.
+      this.#log.warn('moodle download failed', {
+        ok: false,
+        ms: Date.now() - started,
+        error: error instanceof Error ? error.message : String(error),
+        cause: error instanceof Error && error.cause instanceof Error ? error.cause.message : undefined,
+      });
+      throw error;
+    }
+  }
+
+  async #get(url: URL, maxBytes: number, accept?: FileFilter): Promise<DownloadedFile> {
+    const doFetch = this.#fetch;
+    let response: Response;
+    try {
+      response = await doFetch(url, { redirect: 'manual', headers: { 'User-Agent': USER_AGENT } });
+    } catch (cause) {
+      throw new MoodleTransportError('Could not reach Moodle', { cause });
+    }
+    if (!response.ok) throw new MoodleTransportError(`Moodle returned HTTP ${response.status} for the file`);
+
+    const mimeType = (response.headers.get('Content-Type') ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
+    const filename = filenameOf(response, url);
+    // Don't pull down what the caller has no use for.
+    if (accept && !accept({ mimeType, filename })) {
+      await response.body?.cancel();
+      return { bytes: new Uint8Array(), mimeType, filename, skipped: true };
+    }
+    const declared = Number(response.headers.get('Content-Length'));
+    if (declared > maxBytes) throw tooLarge(declared, maxBytes);
+
+    const bytes = await readLimited(response, maxBytes);
+    // Moodle reports a missing or forbidden file as a JSON body with status 200.
+    if (mimeType === 'application/json' && bytes.byteLength < 64 * 1024) {
+      const body = safeJson(bytes);
+      if (typeof body === 'object' && body !== null && 'errorcode' in body) {
+        const { errorcode, error, message } = body as Record<string, string | undefined>;
+        throw new MoodleError(String(errorcode), error ?? message ?? 'File could not be read');
+      }
+    }
+    return { bytes, mimeType, filename, skipped: false };
+  }
+
   async #post<T>(url: string, body: URLSearchParams): Promise<T> {
     // Called as a plain function: Workers rejects the global fetch invoked with any other `this`.
     const doFetch = this.#fetch;
@@ -93,6 +156,68 @@ export class MoodleClient {
       throw new MoodleTransportError('Could not reach Moodle', { cause });
     }
     return parseMoodleResponse<T>(response);
+  }
+}
+
+export interface DownloadedFile {
+  bytes: Uint8Array;
+  /** Lower-case media type without parameters; empty when the server sent none. */
+  mimeType: string;
+  filename: string;
+  /** True when `accept` refused the file, in which case `bytes` is empty. */
+  skipped: boolean;
+}
+
+/** Decides from the response headers alone whether the body is worth downloading. */
+export type FileFilter = (meta: Pick<DownloadedFile, 'mimeType' | 'filename'>) => boolean;
+
+const tooLarge = (size: number, max: number) =>
+  new MoodleTransportError(
+    `File is too large to read (${Math.round(size / 1024 / 1024)} MB; the limit is ${Math.round(max / 1024 / 1024)} MB)`,
+  );
+
+/** Reads the body, giving up as soon as it exceeds `maxBytes` (Content-Length may be absent or wrong). */
+async function readLimited(response: Response, maxBytes: number): Promise<Uint8Array> {
+  const reader = response.body?.getReader();
+  if (!reader) return new Uint8Array();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const result = (await reader.read()) as ReadableStreamReadResult<Uint8Array>;
+    if (result.done) break;
+    const value = result.value;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw tooLarge(total, maxBytes);
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return out;
+}
+
+const safeJson = (bytes: Uint8Array): unknown => {
+  try {
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return undefined;
+  }
+};
+
+function filenameOf(response: Response, url: URL): string {
+  const disposition = response.headers.get('Content-Disposition') ?? '';
+  const named = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)?.[1];
+  const raw = named ?? url.pathname.split('/').pop() ?? 'file';
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
   }
 }
 

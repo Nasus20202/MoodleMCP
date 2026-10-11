@@ -58,9 +58,28 @@ code if your site has QR login enabled.
 
 ## Tools
 
-All read-only: `get_site_info`, `list_courses`, `search_courses`, `get_course_contents`, `list_assignments`,
-`get_submission_status`, `get_upcoming_events`, `get_grades`, `list_forums`, `list_forum_discussions`, `list_pages`,
-`get_notifications`. `GET /api/tools` lists them with their arguments.
+All read-only. `GET /api/tools` lists them with their arguments; the descriptions tell the agent which tool to call
+next and where each id comes from.
+
+| Area      | Tools                                                                                                       |
+| --------- | ----------------------------------------------------------------------------------------------------------- |
+| Site      | `get_site_info`                                                                                             |
+| Courses   | `list_courses`, `search_courses`, `get_course_contents`, `get_course_module`                                |
+| Materials | `read_file`, `list_resources`, `list_pages`, `list_labels`, `list_urls`, `list_wikis`, `get_wiki_pages`     |
+| Work      | `list_assignments`, `get_submission_status`, `list_quizzes`, `get_quiz_attempts`, `get_quiz_attempt_review` |
+| Calendar  | `get_upcoming_events`, `get_course_events`, `get_course_completion`                                         |
+| Grades    | `get_grades`, `get_grades_overview`                                                                         |
+| Forums    | `list_forums`, `list_forum_discussions`, `get_forum_posts`                                                  |
+| Activity  | `get_notifications`                                                                                         |
+
+### Reading files
+
+`read_file` takes a `fileurl` from any other tool and returns text: PDF (text layer only, so scanned documents come back
+empty), DOCX, PPTX (slides and speaker notes), XLSX (tab-separated sheets; dates show as Excel serial numbers), HTML,
+plain text and source code. Images are returned as images. Other types (archives, audio, video) are reported as
+unreadable without being downloaded, unless `raw: true` is passed: then the unmodified file of any type is returned as a
+base64 resource. Files up to 20 MB; extracted text is paged with `offset` and `next_offset`. The URL must be
+on the configured Moodle site; the token is added by the server and redirects are not followed.
 
 ## OAuth tokens
 

@@ -3,7 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import type { Logger } from '../logger.ts';
 import type { MoodleClient } from '../moodle/client.ts';
 import { MoodleError, MoodleTransportError } from '../moodle/errors.ts';
-import type { ToolDefinition } from './define.ts';
+import type { ToolContext, ToolDefinition } from './define.ts';
 import { TOOLS } from './definitions.ts';
 
 const ANNOTATIONS = {
@@ -19,19 +19,32 @@ export function registerTools(server: McpServer, client: MoodleClient, logger: L
     server.registerTool(
       tool.name,
       { description: tool.description, inputSchema: tool.input, annotations: ANNOTATIONS },
-      (args) => runTool(tool, client, args, logger),
+      (args) => runTool(tool, { client, logger }, args),
     );
   }
 }
 
-async function runTool(tool: ToolDefinition, client: MoodleClient, args: unknown, logger: Logger) {
+/** A short, non-sensitive label for why a tool failed, for the logs. */
+function failureKind(error: unknown): string {
+  if (error instanceof MoodleError) return error.code;
+  if (error instanceof MoodleTransportError) return 'transport';
+  return 'internal';
+}
+
+async function runTool(tool: ToolDefinition, context: ToolContext, args: unknown) {
+  const { logger } = context;
   const started = Date.now();
   try {
-    const data = await tool.execute(client, args);
+    const content = await tool.execute(context, args);
     logger.info('tool call', { tool: tool.name, ok: true, ms: Date.now() - started });
-    return { content: [{ type: 'text' as const, text: JSON.stringify(data) }] };
+    return { content };
   } catch (error) {
-    logger.info('tool call', { tool: tool.name, ok: false, ms: Date.now() - started });
+    logger.info('tool call', {
+      tool: tool.name,
+      ok: false,
+      error: failureKind(error),
+      ms: Date.now() - started,
+    });
     // Errors from Moodle are meaningful to the model; anything else is a bug we must not leak.
     if (error instanceof MoodleError || error instanceof MoodleTransportError) {
       return { isError: true, content: [{ type: 'text' as const, text: error.message }] };

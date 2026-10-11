@@ -1,16 +1,31 @@
 import type * as z from 'zod/v4';
 
+import type { Logger } from '../logger.ts';
 import type { MoodleClient, Params } from '../moodle/client.ts';
 import type { MoodleFunction } from '../moodle/functions.ts';
 import type { ToolName } from './names.ts';
 
-/** A read-only tool: validated input in, raw Moodle JSON out. */
+/** One block of a tool result, as MCP clients receive it. */
+export type ToolContent =
+  | { type: 'text'; text: string }
+  | { type: 'image'; data: string; mimeType: string }
+  | { type: 'resource'; resource: { uri: string; mimeType?: string; blob: string } };
+
+export const jsonContent = (data: unknown): ToolContent[] => [{ type: 'text', text: JSON.stringify(data) }];
+
+/** What a tool run may use: the caller's Moodle client and a logger already tagged with the caller. */
+export interface ToolContext {
+  client: MoodleClient;
+  logger: Logger;
+}
+
+/** A read-only tool: validated input in, content blocks out (raw Moodle JSON for most tools). */
 export interface ToolDefinition {
   readonly name: ToolName;
   readonly description: string;
   readonly input: z.ZodObject;
   /** Validates `rawInput` and runs the tool. Throws on invalid input or Moodle errors. */
-  execute(client: MoodleClient, rawInput: unknown): Promise<unknown>;
+  execute(context: ToolContext, rawInput: unknown): Promise<ToolContent[]>;
 }
 
 interface ToolSpec<Schema extends z.ZodObject> {
@@ -24,13 +39,30 @@ interface ToolSpec<Schema extends z.ZodObject> {
 }
 
 export function defineTool<Schema extends z.ZodObject>(spec: ToolSpec<Schema>): ToolDefinition {
+  return defineCustomTool({
+    name: spec.name,
+    description: spec.description,
+    input: spec.input,
+    async run({ client }, input) {
+      return jsonContent(await client.call(spec.fn, await spec.params(input, client)));
+    },
+  });
+}
+
+interface CustomToolSpec<Schema extends z.ZodObject> {
+  name: ToolName;
+  description: string;
+  input: Schema;
+  /** Must only read: go through `client.call` or `client.download`. */
+  run(context: ToolContext, input: z.output<Schema>): Promise<ToolContent[]>;
+}
+
+/** For tools that do more than relay one Moodle function, such as downloading a file. */
+export function defineCustomTool<Schema extends z.ZodObject>(spec: CustomToolSpec<Schema>): ToolDefinition {
   return {
     name: spec.name,
     description: spec.description,
     input: spec.input,
-    async execute(client, rawInput) {
-      const input = spec.input.parse(rawInput);
-      return client.call(spec.fn, await spec.params(input, client));
-    },
+    execute: (context, rawInput) => spec.run(context, spec.input.parse(rawInput)),
   };
 }

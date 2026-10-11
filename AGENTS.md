@@ -26,10 +26,13 @@ pnpm run deploy  # not `pnpm deploy`, which is a different built-in command
 ## Rules that matter
 
 - **Read-only, always.** Every Moodle call goes through `MoodleClient.call`, which only accepts functions listed in
-  `MoodleFunction` (`moodle/functions.ts`). Anything added there must be a read operation.
+  `MoodleFunction` (`moodle/functions.ts`). Anything added there must be a read operation (no `view_*`, which writes
+  logs, and nothing that creates, updates, submits or deletes). The one other path is `MoodleClient.download`, a GET of a
+  file URL that `resolveFileUrl` has confined to the site's `pluginfile.php`.
 - **Never log or return secrets.** Tokens, OAuth codes and sealed values, QR login keys and Moodle parameter values must
   not appear in logs, errors or responses. Tests assert this. Users are identified in logs only by `ip` and `tokenId`
-  (`http/client-info.ts`).
+  (`http/client-info.ts`). Log outcomes and sizes (`function`, `mime`, `format`, `bytes`, `ms`, `ok`, an error code),
+  never URLs, file names, file contents or parameter values.
 - **Site policy is a security boundary.** `X-Moodle-URL` is caller-controlled; `SitePolicy` keeps the Worker from becoming
   an open proxy. Apply it to any new code path that contacts a caller-supplied URL (as `/api/exchange` and the OAuth
   consent page do).
@@ -48,6 +51,10 @@ pnpm run deploy  # not `pnpm deploy`, which is a different built-in command
 2. Add the Moodle function to `MoodleFunction` if it is not there yet.
 3. Add a `defineTool({...})` entry in `tools/definitions.ts` (zod input schema, function, params mapping).
 4. Add a row to the `it.each` table in `app.test.ts`. The web page and `/api/tools` pick the tool up automatically.
+
+Write the description for the model: say what the tool returns, when to prefer a sibling tool, and which tool an id
+argument comes from (`describe()` on the argument repeats it). A tool that is not a plain relay of one Moodle function
+(like `read_file`) uses `defineCustomTool` and returns content blocks.
 
 ## Conventions
 

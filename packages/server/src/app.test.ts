@@ -15,7 +15,7 @@ const MCP_HEADERS = {
 interface RpcResponse {
   result?: {
     tools?: { name: string; annotations?: { readOnlyHint?: boolean } }[];
-    content?: { text: string }[];
+    content?: { text: string; type?: string; resource?: unknown }[];
     isError?: boolean;
   };
   error?: { message: string };
@@ -66,6 +66,143 @@ const callTool = (app: ReturnType<typeof createApp>, name: string, args: unknown
 
 const restCalls = (moodle: { calls: RecordedCall[] }) =>
   moodle.calls.filter((c) => c.url.pathname.endsWith('/webservice/rest/server.php'));
+
+describe('read_file', () => {
+  const FILE = `${TEST_SITE}/webservice/pluginfile.php/1/mod_resource/content/1/notes.txt`;
+  const serve =
+    (body: BodyInit, type = 'text/plain') =>
+    (call: RecordedCall) =>
+      call.url.pathname.includes('pluginfile.php')
+        ? new Response(body, { headers: { 'Content-Type': type } })
+        : {};
+
+  const readFile = async (respond: (call: RecordedCall) => unknown, args: Record<string, unknown> = {}) => {
+    const { app, moodle, logs } = setup(respond);
+    const { body } = await callTool(app, ToolName.ReadFile, { file_url: FILE, ...args });
+    const text = body.result?.content?.[0]?.text ?? '';
+    return { body, moodle, logs, text, json: () => JSON.parse(text) as Record<string, unknown> };
+  };
+
+  it('returns the text of a file, downloaded with the caller token', async () => {
+    const { json, moodle } = await readFile(serve('hello world'));
+    expect(json()).toMatchObject({
+      filename: 'notes.txt',
+      readable: true,
+      text: 'hello world',
+      total_chars: 11,
+      next_offset: null,
+    });
+    expect(moodle.calls[0]?.url.searchParams.get('token')).toBe('user-token');
+  });
+
+  it('pages through long files with offset and max_chars', async () => {
+    const text = 'x'.repeat(1500) + 'y'.repeat(500);
+    const first = (await readFile(serve(text), { max_chars: 1000 })).json();
+    expect(first).toMatchObject({ next_offset: 1000, total_chars: 2000 });
+
+    const last = (await readFile(serve(text), { offset: 1500, max_chars: 1000 })).json();
+    expect(last).toMatchObject({ next_offset: null, text: 'y'.repeat(500) });
+  });
+
+  it('returns an image as an image block', async () => {
+    const { body } = await readFile(serve(new Uint8Array([137, 80, 78, 71]), 'image/png'));
+    expect(body.result?.content).toEqual([
+      { type: 'image', data: 'iVBORw==', mimeType: 'image/png' },
+      expect.objectContaining({ type: 'text' }),
+    ]);
+  });
+
+  it('explains files it cannot read instead of failing', async () => {
+    const { json } = await readFile(serve('x', 'video/mp4'));
+    expect(json().readable).toBe(false);
+    expect(json().note).toContain('video/mp4');
+  });
+
+  it('returns the whole file as base64 when raw is set, whatever its type', async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const { body, moodle } = await readFile(serve(bytes, 'video/mp4'), { raw: true });
+    const [resource, info] = body.result?.content ?? [];
+    expect(resource).toEqual({
+      type: 'resource',
+      resource: { uri: 'moodle-file:///notes.txt', mimeType: 'video/mp4', blob: 'AQID' },
+    });
+    expect(JSON.parse(info?.text ?? '{}')).toMatchObject({ filename: 'notes.txt', size_bytes: 3 });
+    expect(moodle.calls).toHaveLength(1);
+  });
+
+  it('limits raw files to 20 MB', async () => {
+    const { body } = await readFile(serve(new Uint8Array(21 * 1024 * 1024)), { raw: true });
+    expect(body.result?.isError).toBe(true);
+    expect(body.result?.content?.[0]?.text).toContain('too large');
+  });
+
+  it('refuses URLs outside the site without contacting anything', async () => {
+    const { app, moodle } = setup();
+    const { body } = await callTool(app, ToolName.ReadFile, {
+      file_url: 'https://evil.example.org/2025/webservice/pluginfile.php/1/a.txt',
+    });
+    expect(body.result?.isError).toBe(true);
+    expect(body.result?.content?.[0]?.text).toContain('invalidfileurl');
+    expect(moodle.calls).toHaveLength(0);
+  });
+
+  it('reports a missing file as a tool error', async () => {
+    const { body } = await readFile(() => ({ error: 'File not found', errorcode: 'filenotfound' }));
+    expect(body.result?.isError).toBe(true);
+    expect(body.result?.content?.[0]?.text).toContain('filenotfound');
+  });
+
+  const logLines = (logs: string[]) => logs.map((l) => JSON.parse(l) as Record<string, unknown>);
+
+  it('logs what it parsed, without the file name or contents', async () => {
+    const { logs } = await readFile(serve('hello world'));
+    const line = logLines(logs).find((l) => l.msg === 'file parsed');
+    expect(line).toMatchObject({
+      level: 'info',
+      format: 'text',
+      mime: 'text/plain',
+      bytes: 11,
+      chars: 11,
+      truncated: false,
+    });
+    expect(typeof line?.ms).toBe('number');
+    expect(logs.join('\n')).not.toContain('hello world');
+  });
+
+  it('logs external downloads', async () => {
+    const { logs } = await readFile(serve('abc'));
+    expect(logLines(logs).find((l) => l.msg === 'moodle download')).toMatchObject({
+      ok: true,
+      skipped: false,
+      mime: 'text/plain',
+      bytes: 3,
+    });
+  });
+
+  it('reports a file that cannot be parsed instead of failing, and logs a warning', async () => {
+    const { json, logs, body } = await readFile(serve('not a pdf', 'application/pdf'));
+    expect(body.result?.isError).toBeUndefined();
+    expect(json()).toMatchObject({ readable: false, filename: 'notes.txt' });
+    expect(String(json().note)).toContain('could not be parsed');
+    expect(logLines(logs).find((l) => l.msg === 'file parse failed')).toMatchObject({
+      level: 'warn',
+      format: 'pdf',
+      mime: 'application/pdf',
+      bytes: 9,
+    });
+  });
+
+  it('logs files it declines to download', async () => {
+    const { logs } = await readFile(serve('x', 'video/mp4'));
+    expect(logLines(logs).find((l) => l.msg === 'file not readable')).toMatchObject({ mime: 'video/mp4' });
+  });
+
+  it('never logs the token or the file URL', async () => {
+    const { logs } = await readFile(serve('hello'));
+    expect(logs.length).toBeGreaterThan(0);
+    expect(logs.join('\n')).not.toMatch(/user-token|notes\.txt|pluginfile/);
+  });
+});
 
 describe('/mcp authentication', () => {
   it('rejects requests without a token', async () => {
@@ -146,10 +283,34 @@ describe('/mcp tools', () => {
     [ToolName.ListPages, { course_id: 3 }, { 'courseids[0]': '3' }],
     [ToolName.GetSubmissionStatus, { assign_id: 4 }, { assignid: '4' }],
     [ToolName.ListForumDiscussions, { forum_id: 5 }, { forumid: '5' }],
+    [ToolName.GetCourseModule, { cmid: 6 }, { cmid: '6' }],
+    [ToolName.ListResources, { course_id: 3 }, { 'courseids[0]': '3' }],
+    [ToolName.ListUrls, { course_id: 3 }, { 'courseids[0]': '3' }],
+    [ToolName.ListLabels, { course_id: 3 }, { 'courseids[0]': '3' }],
+    [ToolName.ListWikis, { course_id: 3 }, { 'courseids[0]': '3' }],
+    [ToolName.ListQuizzes, { course_id: 3 }, { 'courseids[0]': '3' }],
+    [ToolName.GetWikiPages, { wiki_id: 7 }, { wikiid: '7' }],
+    [ToolName.GetQuizAttemptReview, { attempt_id: 8 }, { attemptid: '8', page: '-1' }],
+    [
+      ToolName.GetForumPosts,
+      { discussion_id: 9 },
+      { discussionid: '9', sortby: 'created', sortdirection: 'ASC' },
+    ],
+    [ToolName.GetCourseEvents, { course_id: 3 }, { courseid: '3' }],
   ])('%s maps its input to Moodle parameters', async (tool, args, expected) => {
     const { app, moodle } = setup();
     await callTool(app, tool, args);
     expect(restCalls(moodle)[0]?.body).toMatchObject(expected);
+  });
+
+  it.each([
+    [ToolName.GetQuizAttempts, { quiz_id: 4 }, { quizid: '4', userid: '9', status: 'all' }],
+    [ToolName.GetCourseCompletion, { course_id: 3 }, { courseid: '3', userid: '9' }],
+    [ToolName.GetGradesOverview, {}, { userid: '9' }],
+  ])('%s passes the token owner as userid', async (tool, args, expected) => {
+    const { app, moodle } = setup(() => ({ userid: 9 }));
+    await callTool(app, tool, args);
+    expect(restCalls(moodle)[1]?.body).toMatchObject(expected);
   });
 
   it('uses the site from the X-Moodle-URL header when allowed', async () => {
@@ -170,6 +331,24 @@ describe('/mcp tools', () => {
     const { body } = await callTool(app, ToolName.GetSiteInfo);
     expect(body.result?.isError).toBe(true);
     expect(body.result?.content?.[0]?.text).toContain('invalidtoken');
+  });
+
+  it('logs why a tool call failed', async () => {
+    const { app, logs } = setup(() => ({ exception: 'x', errorcode: 'invalidtoken', message: 'm' }));
+    await callTool(app, ToolName.GetSiteInfo);
+    const lines = logs.map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(lines.find((l) => l.msg === 'tool call')).toMatchObject({ ok: false, error: 'invalidtoken' });
+    expect(lines.find((l) => l.msg === 'moodle call failed')).toMatchObject({ ok: false });
+  });
+
+  it('logs successful Moodle calls with the function name only', async () => {
+    const { app, logs } = setup(() => [{ id: 1 }]);
+    await callTool(app, ToolName.SearchCourses, { query: 'PRIVATE-QUERY' });
+    const line = logs
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .find((l) => l.msg === 'moodle call');
+    expect(line).toMatchObject({ level: 'info', function: 'core_course_search_courses', ok: true });
+    expect(logs.join('\n')).not.toContain('PRIVATE-QUERY');
   });
 
   it('rejects invalid arguments without calling Moodle', async () => {
