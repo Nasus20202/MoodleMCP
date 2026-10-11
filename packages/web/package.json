@@ -10,8 +10,8 @@
   },
   "dependencies": {
     "@moodle-mcp/shared": "workspace:*",
-    "jsqr": "1.4.0",
-    "svelte": "5.57.2"
+    "svelte": "5.57.2",
+    "zxing-wasm": "3.1.5"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "7.3.1",
