@@ -10,6 +10,7 @@ export interface ConfigResponse {
 export interface SchemaProperty {
   type?: string;
   description?: string;
+  default?: unknown;
 }
 
 /** The subset of JSON Schema the UI renders. */

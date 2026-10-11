@@ -1,23 +1,37 @@
 <script lang="ts">
   import type { ToolInfo } from '@moodle-mcp/shared';
 
-  import { toolArguments } from '../lib/tools';
+  import { summary, toolArguments } from '../lib/tools';
 
-  let { tool }: { tool: ToolInfo } = $props();
+  let { tool, open = $bindable(false) }: { tool: ToolInfo; open?: boolean } = $props();
   const args = $derived(toolArguments(tool));
 </script>
 
-<article class="tool-card">
-  <div class="mb-1 flex items-center justify-between gap-2">
-    <h3 class="font-mono text-sm font-semibold">{tool.name}</h3>
-    {#if tool.readOnly}<span class="badge">read-only</span>{/if}
+<details class="tool-row" bind:open>
+  <summary class="tool-summary">
+    <span class="chevron" aria-hidden="true">▸</span>
+    <h3 class="shrink-0 font-mono text-sm font-semibold">{tool.name}</h3>
+    <span class="muted min-w-0 flex-1 truncate text-sm">{summary(tool.description)}</span>
+    {#if tool.readOnly}<span class="badge hidden shrink-0 sm:inline">read-only</span>{/if}
+  </summary>
+  <div class="pb-3 pl-6">
+    <p class="muted text-sm">{tool.description}</p>
+    {#if args.length > 0}
+      <dl class="params">
+        {#each args as arg (arg.name)}
+          <dt>
+            <code class="param-name">{arg.name}</code>
+            <span class="param-type">{arg.type}</span>
+            <span class="param-flag" class:param-required={arg.required}
+              >{arg.required ? 'required' : 'optional'}</span
+            >
+          </dt>
+          <dd>
+            {arg.description ?? ''}
+            {#if arg.default !== undefined}<span class="opacity-70">(default: {arg.default})</span>{/if}
+          </dd>
+        {/each}
+      </dl>
+    {/if}
   </div>
-  <p class="muted text-sm">{tool.description}</p>
-  {#each args as arg (arg.name)}
-    <p class="mt-2 text-xs text-slate-500">
-      <code>{arg.name}</code>{arg.required ? '*' : ''}
-      <span class="opacity-70">({arg.type})</span>
-      {#if arg.description}— {arg.description}{/if}
-    </p>
-  {/each}
-</article>
+</details>

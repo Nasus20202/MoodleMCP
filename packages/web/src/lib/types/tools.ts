@@ -4,4 +4,6 @@ export interface ToolArgument {
   type: string;
   description?: string;
   required: boolean;
+  /** Shown when the argument is optional and has a default value. */
+  default?: string;
 }

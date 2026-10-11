@@ -10,5 +10,14 @@ export function toolArguments(tool: ToolInfo): ToolArgument[] {
     type: p.type ?? 'any',
     description: p.description,
     required: required.has(name),
+    ...(p.default === undefined
+      ? {}
+      : { default: typeof p.default === 'string' ? p.default : JSON.stringify(p.default) }),
   }));
+}
+
+/** The first sentence of a tool description, without code backticks, for the collapsed view. */
+export function summary(description: string): string {
+  const first = /^[\s\S]+?[.!?:](?=\s+[A-Z`"'(]|$)/.exec(description)?.[0] ?? description;
+  return first.replace(/`/g, '').replace(/[.:]$/, '');
 }

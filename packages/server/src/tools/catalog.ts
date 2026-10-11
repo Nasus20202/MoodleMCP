@@ -9,6 +9,6 @@ export function toolCatalog(): ToolInfo[] {
     name: tool.name,
     description: tool.description,
     readOnly: true,
-    inputSchema: z.toJSONSchema(tool.input) as InputSchema,
+    inputSchema: z.toJSONSchema(tool.input, { io: 'input' }) as InputSchema,
   }));
 }

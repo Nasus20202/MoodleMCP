@@ -87,10 +87,40 @@
   .badge {
     @apply rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300;
   }
-  .tool-card {
-    @apply rounded-xl border border-slate-200 p-4 dark:border-slate-800;
+  .tool-list {
+    @apply divide-y divide-slate-200 rounded-xl border border-slate-200 px-4 dark:divide-slate-800 dark:border-slate-800;
+  }
+  .tool-summary {
+    @apply flex cursor-pointer list-none items-center gap-3 py-2.5 select-none [&::-webkit-details-marker]:hidden;
+  }
+  .chevron {
+    @apply w-3 shrink-0 text-xs text-slate-400 transition-transform;
+  }
+  details[open] > .tool-summary .chevron {
+    @apply rotate-90;
+  }
+  .params {
+    @apply mt-3 grid grid-cols-1 gap-x-6 gap-y-1 rounded-lg bg-slate-50 p-3 text-sm sm:grid-cols-[minmax(12rem,max-content)_1fr] dark:bg-slate-900;
+  }
+  .params dt {
+    @apply flex flex-wrap items-baseline gap-x-2 sm:mt-0;
+  }
+  .params dd {
+    @apply mb-2 text-slate-600 sm:mb-0 dark:text-slate-400;
+  }
+  .param-name {
+    @apply font-mono text-[13px] font-semibold text-slate-800 dark:text-slate-100;
+  }
+  .param-type {
+    @apply text-xs text-slate-500;
+  }
+  .param-flag {
+    @apply text-[11px] tracking-wide text-slate-400 uppercase;
+  }
+  .param-required {
+    @apply font-semibold text-amber-600 dark:text-amber-400;
   }
   .skeleton {
-    @apply h-24 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800;
+    @apply h-11 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800;
   }
 }

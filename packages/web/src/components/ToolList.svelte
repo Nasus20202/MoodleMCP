@@ -10,12 +10,17 @@
   let tools = $state<ToolInfo[]>([]);
   let loading = $state(true);
   let error = $state('');
+  let open = $state<Record<string, boolean>>({});
+  const allOpen = $derived(tools.length > 0 && tools.every((t) => open[t.name]));
+
+  const setAll = (value: boolean) => (open = Object.fromEntries(tools.map((t) => [t.name, value])));
 
   async function load() {
     loading = true;
     error = '';
     try {
       tools = await fetchTools();
+      setAll(false);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
@@ -27,7 +32,7 @@
 </script>
 
 {#if loading}
-  <div class="grid gap-3 sm:grid-cols-2">
+  <div class="space-y-2">
     {#each { length: SKELETON_COUNT } as _, i (i)}<div class="skeleton"></div>{/each}
   </div>
 {:else if error}
@@ -36,8 +41,13 @@
     <button class="ml-2 underline" onclick={load}>Retry</button>
   </p>
 {:else}
-  <div class="grid gap-3 sm:grid-cols-2">
-    {#each tools as tool (tool.name)}<ToolCard {tool} />{/each}
+  <div class="mb-2 flex items-center justify-between gap-3">
+    <p class="text-xs text-slate-500">{tools.length} tools, loaded live from the server.</p>
+    <button type="button" class="btn btn-secondary" onclick={() => setAll(!allOpen)}
+      >{allOpen ? 'Collapse all' : 'Expand all'}</button
+    >
   </div>
-  <p class="mt-3 text-xs text-slate-500">{tools.length} tools, loaded live from the server.</p>
+  <div class="tool-list">
+    {#each tools as tool (tool.name)}<ToolCard {tool} bind:open={open[tool.name]} />{/each}
+  </div>
 {/if}

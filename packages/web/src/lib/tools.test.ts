@@ -1,7 +1,7 @@
 import type { ToolInfo } from '@moodle-mcp/shared';
 import { describe, expect, it } from 'vitest';
 
-import { toolArguments } from './tools';
+import { summary, toolArguments } from './tools';
 
 const tool = (inputSchema: ToolInfo['inputSchema']): ToolInfo => ({
   name: 't',
@@ -24,7 +24,30 @@ describe('toolArguments', () => {
     ]);
   });
 
+  it('reports defaults as text', () => {
+    const [arg] = toolArguments(tool({ properties: { raw: { type: 'boolean', default: false } } }));
+    expect(arg).toMatchObject({ name: 'raw', required: false, default: 'false' });
+  });
+
   it('handles tools without arguments', () => {
     expect(toolArguments(tool({}))).toEqual([]);
+  });
+});
+
+describe('summary', () => {
+  it.each([
+    ['Show the site. Rarely needed.', 'Show the site'],
+    [
+      'Look up one activity by its `cmid` and get its type (`modname`). Use this when',
+      'Look up one activity by its cmid and get its type (modname)',
+    ],
+    [
+      'Search ALL visible courses on the site by name, including ones the user is not enrolled in.',
+      'Search ALL visible courses on the site by name, including ones the user is not enrolled in',
+    ],
+    ['Open https://x.org/a.b now. Then go.', 'Open https://x.org/a.b now'],
+    ['no punctuation', 'no punctuation'],
+  ])('%s', (input, expected) => {
+    expect(summary(input)).toBe(expected);
   });
 });

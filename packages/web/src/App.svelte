@@ -18,7 +18,7 @@
 
 <Hero />
 
-<main class="mx-auto -mt-6 max-w-3xl space-y-6 px-4 pb-20">
+<main class="mx-auto -mt-6 max-w-7xl space-y-6 px-4 pb-20 sm:px-6">
   <Step n={1} title="Get your token"><TokenStep /></Step>
   <Step n={2} title="Add it to your agent"><ConnectStep /></Step>
   <Step n={3} title="What your agent can do"><ToolList /></Step>

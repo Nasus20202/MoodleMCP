@@ -5,7 +5,7 @@
 </script>
 
 <header class="bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 text-white">
-  <div class="mx-auto max-w-3xl px-4 py-14">
+  <div class="mx-auto max-w-7xl px-4 py-14 sm:px-6">
     <p class="mb-2 text-sm font-medium tracking-widest text-indigo-200 uppercase">Model Context Protocol</p>
     <h1 class="text-4xl font-bold tracking-tight sm:text-5xl">Moodle MCP</h1>
     <p class="mt-4 max-w-xl text-lg text-indigo-100">
