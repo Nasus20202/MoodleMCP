@@ -1,63 +1,10 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:best-practices"],
-  "lockFileMaintenance": {
-    "enabled": true,
-    "schedule": ["before 6am on monday"]
-  },
+  "extends": ["config:recommended"],
   "packageRules": [
     {
-      "description": "Reference GitHub Actions by plain version tags, not commit digests",
-      "matchManagers": ["github-actions"],
-      "pinDigests": false
-    },
-    {
-      "description": "Cloudflare tooling moves together",
-      "matchPackageNames": ["wrangler"],
-      "groupName": "cloudflare"
-    },
-    {
-      "description": "MCP SDK packages share a release train",
-      "matchPackageNames": ["@modelcontextprotocol/**"],
-      "groupName": "mcp sdk"
-    },
-    {
-      "description": "Web toolchain",
-      "matchPackageNames": [
-        "svelte",
-        "svelte-check",
-        "vite",
-        "@sveltejs/**",
-        "tailwindcss",
-        "@tailwindcss/**",
-        "@tsconfig/svelte"
-      ],
-      "groupName": "web toolchain"
-    },
-    {
-      "description": "Node type definitions follow the Node major in .node-version",
-      "matchPackageNames": ["@types/node"],
-      "allowedVersions": "<25"
-    },
-    {
-      "description": "Linting and formatting",
-      "matchPackageNames": [
-        "eslint",
-        "@eslint/**",
-        "typescript-eslint",
-        "eslint-plugin-*",
-        "eslint-config-*",
-        "svelte-eslint-parser",
-        "globals",
-        "prettier",
-        "prettier-plugin-*"
-      ],
-      "groupName": "lint and format"
-    },
-    {
-      "description": "typescript-eslint and svelte-check need TypeScript's classic JS API, which TypeScript 7 no longer ships; it comes from @typescript/typescript6 (installed under the name \"typescript\"). tsc itself is TypeScript 7 (installed as @typescript/native).",
-      "matchPackageNames": ["@typescript/typescript6", "typescript"],
-      "groupName": "typescript"
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true
     }
   ]
 }
