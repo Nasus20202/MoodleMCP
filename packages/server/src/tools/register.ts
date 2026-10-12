@@ -6,6 +6,9 @@ import { MoodleError, MoodleTransportError } from '../moodle/errors.ts';
 import type { ToolContext, ToolDefinition } from './define.ts';
 import { TOOLS } from './definitions.ts';
 
+/** A tool call slower than this is logged as a warning. */
+const SLOW_MS = 5000;
+
 const ANNOTATIONS = {
   readOnlyHint: true,
   destructiveHint: false,
@@ -36,14 +39,19 @@ async function runTool(tool: ToolDefinition, context: ToolContext, args: unknown
   const started = Date.now();
   try {
     const content = await tool.execute(context, args);
-    logger.info('tool call', { tool: tool.name, ok: true, ms: Date.now() - started });
+    const ms = Date.now() - started;
+    if (ms >= SLOW_MS)
+      logger.warn(`tool ${tool.name} ok but slow ${ms}ms`, { tool: tool.name, ok: true, ms });
+    else logger.info(`tool ${tool.name} ok ${ms}ms`, { tool: tool.name, ok: true, ms });
     return { content };
   } catch (error) {
-    logger.info('tool call', {
+    const kind = failureKind(error);
+    const ms = Date.now() - started;
+    logger.info(`tool ${tool.name} failed (${kind}) ${ms}ms`, {
       tool: tool.name,
       ok: false,
-      error: failureKind(error),
-      ms: Date.now() - started,
+      error: kind,
+      ms,
     });
     // Errors from Moodle are meaningful to the model; anything else is a bug we must not leak.
     if (error instanceof MoodleError || error instanceof MoodleTransportError) {
