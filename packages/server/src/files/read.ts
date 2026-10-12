@@ -1,9 +1,8 @@
-import { extractText, getDocumentProxy } from 'unpdf';
-
 import type { DownloadedFile } from '../moodle/client.ts';
-import { docxText, pptxText } from './office.ts';
 import { htmlToText } from './text.ts';
-import { xlsxText } from './xlsx.ts';
+
+/** PDF.js `VerbosityLevel.ERRORS`: its font warnings ("TT: undefined function") are noise, the text still extracts. */
+const PDFJS_ERRORS_ONLY = 0;
 
 /** Largest image handed to the model as an image rather than described. */
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
@@ -118,21 +117,29 @@ export function classify(meta: Pick<DownloadedFile, 'mimeType' | 'filename'>): K
 export const unsupportedReason = (meta: Pick<DownloadedFile, 'mimeType' | 'filename'>) =>
   `Cannot extract text from ${effectiveType(meta) || 'this file type'}. Supported: PDF, DOCX, PPTX, XLSX, HTML, images and plain-text files.`;
 
-/** Extracts what a model can read from a downloaded file. */
+/**
+ * Extracts what a model can read from a downloaded file. The parsers (PDF.js, fflate) are large and most
+ * requests never read a document, so each is loaded on first use rather than when the Worker starts.
+ */
 export async function readFile(file: DownloadedFile): Promise<FileReading> {
   switch (classify(file)) {
     case 'pdf': {
-      const pdf = await getDocumentProxy(new Uint8Array(file.bytes));
+      const { extractText, getDocumentProxy } = await import('unpdf');
+      const pdf = await getDocumentProxy(new Uint8Array(file.bytes), { verbosity: PDFJS_ERRORS_ONLY });
       const { text, totalPages } = await extractText(pdf, { mergePages: true });
       return { kind: 'text', format: 'pdf', text: text.trim(), pages: totalPages };
     }
-    case 'docx':
+    case 'docx': {
+      const { docxText } = await import('./office.ts');
       return { kind: 'text', format: 'docx', text: docxText(file.bytes) };
+    }
     case 'pptx': {
+      const { pptxText } = await import('./office.ts');
       const { text, slides } = pptxText(file.bytes);
       return { kind: 'text', format: 'pptx', text, pages: slides };
     }
     case 'xlsx': {
+      const { xlsxText } = await import('./xlsx.ts');
       const { text, sheets } = xlsxText(file.bytes);
       return { kind: 'text', format: 'xlsx', text, pages: sheets };
     }
