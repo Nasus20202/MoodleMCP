@@ -125,7 +125,7 @@ Needs Node 24.21 or newer (see `.node-version`) and [pnpm](https://pnpm.io) (`co
 
 ```sh
 pnpm install
-pnpm dev         # wrangler dev on :8787 (page, /api, /mcp)
+pnpm dev         # Worker on :8787 + Vite with hot reload on :5173; open :5173
 pnpm check       # ESLint, Prettier, typecheck, tests
 pnpm format      # fix what can be fixed
 ```
