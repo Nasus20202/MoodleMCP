@@ -171,7 +171,9 @@ describe('read_file', () => {
 
   it('logs external downloads', async () => {
     const { logs } = await readFile(serve('abc'));
-    expect(logLines(logs).find((l) => l.msg === 'moodle download')).toMatchObject({
+    expect(
+      logLines(logs).find((l) => l.msg === 'moodle download' || String(l.msg).startsWith('moodle download ')),
+    ).toMatchObject({
       ok: true,
       skipped: false,
       mime: 'text/plain',
@@ -337,8 +339,13 @@ describe('/mcp tools', () => {
     const { app, logs } = setup(() => ({ exception: 'x', errorcode: 'invalidtoken', message: 'm' }));
     await callTool(app, ToolName.GetSiteInfo);
     const lines = logs.map((l) => JSON.parse(l) as Record<string, unknown>);
-    expect(lines.find((l) => l.msg === 'tool call')).toMatchObject({ ok: false, error: 'invalidtoken' });
-    expect(lines.find((l) => l.msg === 'moodle call failed')).toMatchObject({ ok: false });
+    expect(lines.find((l) => l.tool === ToolName.GetSiteInfo)).toMatchObject({
+      ok: false,
+      error: 'invalidtoken',
+    });
+    expect(lines.find((l) => String(l.msg).startsWith('moodle ') && l.ok === false)).toMatchObject({
+      ok: false,
+    });
   });
 
   it('logs successful Moodle calls with the function name only', async () => {
@@ -346,8 +353,14 @@ describe('/mcp tools', () => {
     await callTool(app, ToolName.SearchCourses, { query: 'PRIVATE-QUERY' });
     const line = logs
       .map((l) => JSON.parse(l) as Record<string, unknown>)
-      .find((l) => l.msg === 'moodle call');
-    expect(line).toMatchObject({ level: 'info', function: 'core_course_search_courses', ok: true });
+      .find((l) => String(l.msg).startsWith('moodle ') && l.ok === true);
+    expect(line).toMatchObject({
+      level: 'info',
+      function: 'core_course_search_courses',
+      endpoint: '/webservice/rest/server.php',
+      site: TEST_SITE,
+      ok: true,
+    });
     expect(logs.join('\n')).not.toContain('PRIVATE-QUERY');
   });
 
@@ -371,9 +384,9 @@ describe('/mcp tools', () => {
 
     const lines = logs.map((l) => JSON.parse(l) as Record<string, unknown>);
     const tokenId = await tokenFingerprint('user-token');
-    for (const msg of ['request', 'tool call', 'moodle call failed']) {
-      const line = lines.find((l) => l.msg === msg);
-      expect(line, msg).toMatchObject({ ip: '203.0.113.7', tokenId });
+    for (const key of ['status', 'tool', 'function']) {
+      const line = lines.find((l) => key in l);
+      expect(line, key).toMatchObject({ ip: '203.0.113.7', tokenId });
     }
     expect(logs.join('\n')).not.toContain('user-token');
   });
@@ -381,10 +394,44 @@ describe('/mcp tools', () => {
   it('logs the IP of unauthenticated requests, without a fingerprint', async () => {
     const { app, logs } = setup();
     await app.request('/mcp', { method: 'POST', headers: { 'CF-Connecting-IP': '203.0.113.9' }, body: '{}' });
-    const line = JSON.parse(logs[0] ?? '{}') as Record<string, unknown>;
-    expect(line).toMatchObject({ msg: 'request', status: 401, ip: '203.0.113.9' });
+    const lines = logs.map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(lines[0]).toMatchObject({ level: 'warn', ip: '203.0.113.9' });
+    expect(String(lines[0]?.msg)).toMatch(/^auth rejected: Missing Moodle token/);
+    const line = lines[1] ?? {};
+    expect(line).toMatchObject({ status: 401, ip: '203.0.113.9' });
+    expect(line.msg).toMatch(/^POST \/mcp 401 \d+ms$/);
     expect(line).not.toHaveProperty('tokenId');
   });
+});
+
+it('logs oversized bodies', async () => {
+  const { app, logs } = setup();
+  await app.request('/api/exchange', {
+    method: 'POST',
+    headers: { 'Content-Length': '99999', 'CF-Connecting-IP': '203.0.113.5' },
+    body: '{}',
+  });
+  const lines = logs.map((l) => JSON.parse(l) as Record<string, unknown>);
+  expect(lines.find((l) => l.msg === 'request rejected: too large')).toMatchObject({ ip: '203.0.113.5' });
+});
+
+it('refuses a body over the limit even without a Content-Length', async () => {
+  const { app } = setup();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('x'.repeat(10_000)));
+      controller.close();
+    },
+  });
+  const res = await app.request('/api/exchange', { method: 'POST', body, duplex: 'half' } as RequestInit);
+  expect(res.status).toBe(413);
+});
+
+it('answers unknown paths with a JSON 404', async () => {
+  const { app } = setup();
+  const res = await app.request('/api/nope');
+  expect(res.status).toBe(404);
+  expect(await res.json()).toEqual({ error: 'Not found' });
 });
 
 describe('/api', () => {

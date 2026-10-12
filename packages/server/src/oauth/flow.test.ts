@@ -340,6 +340,31 @@ describe('access tokens on /mcp', () => {
     expect(res.headers.get('WWW-Authenticate')).toContain('error="invalid_token"');
   });
 
+  it('logs each step of the flow by outcome', async () => {
+    const h = setup();
+    const { clientId, code } = await obtainCode(h);
+    await exchange(h, {
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: REDIRECT,
+      code_verifier: 'w'.repeat(64),
+      client_id: clientId,
+    });
+    const msgs = h.logs.map((l) => String((JSON.parse(l) as { msg: unknown }).msg));
+    expect(msgs).toContain('oauth client registered');
+    expect(msgs).toContain('oauth code issued');
+    expect(msgs).toContain('oauth token rejected: invalid_grant');
+  });
+
+  it('refuses oversized OAuth requests', async () => {
+    const h = setup();
+    const res = await h.request(
+      '/oauth/token',
+      form({ grant_type: 'refresh_token', refresh_token: 'x'.repeat(40_000) }),
+    );
+    expect(res.status).toBe(413);
+  });
+
   it('never logs tokens, codes or the secret', async () => {
     const h = setup();
     const { clientId, code } = await obtainCode(h);

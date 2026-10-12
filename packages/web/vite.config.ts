@@ -4,7 +4,11 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   plugins: [tailwindcss(), svelte()],
-  // `npm run dev` proxies the API to a locally running `wrangler dev`.
-  server: { proxy: { '/api': 'http://localhost:8787', '/mcp': 'http://localhost:8787' } },
+  // `pnpm dev` runs this next to `wrangler dev`; whatever the Worker serves is proxied to it.
+  server: {
+    proxy: Object.fromEntries(
+      ['/api', '/mcp', '/oauth', '/.well-known'].map((path) => [path, 'http://localhost:8787']),
+    ),
+  },
   test: { name: 'web', include: ['src/**/*.test.ts'] },
 });

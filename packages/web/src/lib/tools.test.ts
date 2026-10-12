@@ -1,7 +1,7 @@
 import type { ToolInfo } from '@moodle-mcp/shared';
 import { describe, expect, it } from 'vitest';
 
-import { summary, toolArguments } from './tools';
+import { codeSegments, summary, toolArguments } from './tools';
 
 const tool = (inputSchema: ToolInfo['inputSchema']): ToolInfo => ({
   name: 't',
@@ -49,5 +49,21 @@ describe('summary', () => {
     ['no punctuation', 'no punctuation'],
   ])('%s', (input, expected) => {
     expect(summary(input)).toBe(expected);
+  });
+});
+
+describe('codeSegments', () => {
+  it('marks backtick spans as code', () => {
+    expect(codeSegments('call `assign_id`/`forum_id`.')).toEqual([
+      { text: 'call ', code: false },
+      { text: 'assign_id', code: true },
+      { text: '/', code: false },
+      { text: 'forum_id', code: true },
+      { text: '.', code: false },
+    ]);
+  });
+
+  it('leaves an unmatched backtick as text', () => {
+    expect(codeSegments('a ` b')).toEqual([{ text: 'a ` b', code: false }]);
   });
 });

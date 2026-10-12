@@ -12,7 +12,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "pnpm --filter @moodle-mcp/server --filter @moodle-mcp/web --parallel run dev",
     "build": "pnpm --filter @moodle-mcp/web build",
     "deploy": "wrangler deploy",
     "types": "wrangler types --env-interface Env packages/server/worker-configuration.d.ts",

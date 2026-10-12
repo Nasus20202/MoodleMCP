@@ -6,6 +6,7 @@ import * as z from 'zod/v4';
 import type { Logger } from '../logger.ts';
 import { MoodleError, MoodleTransportError } from '../moodle/errors.ts';
 import { SiteNotAllowedError } from '../site-policy.ts';
+import type { AppEnv } from './context.ts';
 
 /** An error with the HTTP status and message to return to the caller. */
 export class HttpError extends Error {
@@ -24,8 +25,15 @@ export class HttpError extends Error {
 export const jsonError = (message: string): ErrorResponse => ({ error: message });
 
 /** Turns thrown errors into JSON error responses; unexpected ones are logged and reported opaquely. */
-export function errorHandler(logger: Logger): ErrorHandler {
+export function errorHandler(logger: Logger): ErrorHandler<AppEnv> {
   return (error, c) => {
+    // These messages are fixed strings, so they are safe to log; they say why a caller was turned away.
+    if (error instanceof HttpError && error.status === 401)
+      logger.warn(`auth rejected: ${error.message}`, { ...c.get('client'), path: c.req.path });
+    if (error instanceof HttpError && error.status === 413)
+      logger.warn('request rejected: too large', { ...c.get('client'), path: c.req.path });
+    if (error instanceof SiteNotAllowedError)
+      logger.warn(`site rejected: ${error.message}`, { ...c.get('client'), path: c.req.path });
     if (error instanceof HttpError) return c.json(jsonError(error.message), error.status, error.headers);
     if (error instanceof LinkError || error instanceof SiteNotAllowedError)
       return c.json(jsonError(error.message), 400);

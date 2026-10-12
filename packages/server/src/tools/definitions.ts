@@ -31,8 +31,7 @@ export const TOOLS = [
     name: ToolName.ListCourses,
     description:
       'List the courses the user is enrolled in, with their ids: start here, because almost every other tool ' +
-      'needs a `course_id` from this list. Course names may contain multilingual markup like ' +
-      '`{mlang pl}Nazwa{mlang}{mlang en}Name{mlang}`; use the part in the language the user speaks.',
+      'needs a `course_id` from this list.',
     input: noInput,
     fn: MoodleFunction.UserCourses,
     params: async (_, client) => ({ userid: await client.userId() }),

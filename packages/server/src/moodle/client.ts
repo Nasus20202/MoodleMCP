@@ -19,6 +19,8 @@ export interface MoodleClientOptions {
   logger?: Logger;
 }
 
+const WS_ENDPOINT = '/webservice/rest/server.php';
+
 interface ExceptionBody {
   exception: string;
   errorcode: string;
@@ -40,7 +42,8 @@ export class MoodleClient {
     this.#baseUrl = options.baseUrl.replace(/\/+$/, '');
     this.#token = options.token;
     this.#fetch = options.fetch ?? fetch;
-    this.#log = options.logger ?? silentLogger;
+    // The base URL is a validated site address (https, no credentials or query), so it is safe to log.
+    this.#log = (options.logger ?? silentLogger).child({ site: this.#baseUrl });
   }
 
   /** Calls an allow-listed web service function and returns its parsed JSON result. */
@@ -56,15 +59,18 @@ export class MoodleClient {
       body.set('wsfunction', fn);
       body.set('moodlewsrestformat', 'json');
 
-      const result = await this.#post<T>(`${this.#baseUrl}/webservice/rest/server.php`, body);
-      this.#log.info('moodle call', { function: fn, ok: true, ms: Date.now() - started });
+      const result = await this.#post<T>(`${this.#baseUrl}${WS_ENDPOINT}`, body);
+      const ms = Date.now() - started;
+      this.#log.info(`moodle ${fn} ok ${ms}ms`, { function: fn, endpoint: WS_ENDPOINT, ok: true, ms });
       return result;
     } catch (error) {
       // Never log the token or parameter values; they identify the user.
-      this.#log.warn('moodle call failed', {
+      const ms = Date.now() - started;
+      this.#log.warn(`moodle ${fn} failed ${ms}ms`, {
         function: fn,
+        endpoint: WS_ENDPOINT,
         ok: false,
-        ms: Date.now() - started,
+        ms,
         error: error instanceof Error ? error.message : String(error),
         cause: error instanceof Error && error.cause instanceof Error ? error.cause.message : undefined,
       });
@@ -90,19 +96,22 @@ export class MoodleClient {
     const started = Date.now();
     try {
       const file = await this.#get(url, maxBytes, accept);
-      this.#log.info('moodle download', {
+      const ms = Date.now() - started;
+      const bytes = file.bytes.byteLength;
+      this.#log.info(`moodle download ${file.mimeType} ${bytes} bytes ${ms}ms`, {
         ok: true,
         skipped: file.skipped,
         mime: file.mimeType,
-        bytes: file.bytes.byteLength,
-        ms: Date.now() - started,
+        bytes,
+        ms,
       });
       return file;
     } catch (error) {
       // The URL carries the token, so it is never logged.
-      this.#log.warn('moodle download failed', {
+      const ms = Date.now() - started;
+      this.#log.warn(`moodle download failed ${ms}ms`, {
         ok: false,
-        ms: Date.now() - started,
+        ms,
         error: error instanceof Error ? error.message : String(error),
         cause: error instanceof Error && error.cause instanceof Error ? error.cause.message : undefined,
       });

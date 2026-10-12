@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import type { AppConfig } from './config.ts';
 import { clientInfo } from './http/client-info.ts';
 import type { AppEnv } from './http/context.ts';
-import { errorHandler } from './http/errors.ts';
+import { errorHandler, jsonError } from './http/errors.ts';
 import { requestLogger } from './http/request-logger.ts';
 import { type Logger, silentLogger } from './logger.ts';
 import { createMcpEndpoint } from './mcp.ts';
@@ -31,6 +31,6 @@ export function createApp(config: AppConfig, deps: AppDeps = {}): Hono<AppEnv> {
     .use(requestLogger(logger))
     .route('/', mcpRoutes(createMcpEndpoint({ fetch: fetchImpl, logger }), policy, sealer))
     .route('/', apiRoutes({ policy, fetch: fetchImpl, oauth: sealer !== undefined }));
-  if (sealer) app.route('/', oauthRoutes({ sealer, policy, fetch: fetchImpl }));
-  return app.onError(errorHandler(logger));
+  if (sealer) app.route('/', oauthRoutes({ sealer, policy, fetch: fetchImpl, logger }));
+  return app.notFound((c) => c.json(jsonError('Not found'), 404)).onError(errorHandler(logger));
 }

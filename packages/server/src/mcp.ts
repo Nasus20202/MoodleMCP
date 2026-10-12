@@ -37,28 +37,24 @@ const SERVER_INSTRUCTIONS = [
  * caller, so nothing is shared between users and nothing is stored.
  */
 export function createMcpEndpoint(deps: { fetch: typeof fetch; logger: Logger }): McpEndpoint {
-  const handler = createMcpHandler(
-    ({ authInfo }) => {
-      const extra = callerExtra.safeParse(authInfo?.extra);
-      if (!(authInfo && extra.success))
-        throw new Error('MCP request reached the handler without credentials');
+  const handler = createMcpHandler(({ authInfo }) => {
+    const extra = callerExtra.safeParse(authInfo?.extra);
+    if (!(authInfo && extra.success)) throw new Error('MCP request reached the handler without credentials');
 
-      const logger = deps.logger.child(extra.data.logFields);
-      const client = new MoodleClient({
-        baseUrl: extra.data.site,
-        token: authInfo.token,
-        fetch: deps.fetch,
-        logger,
-      });
-      const server = new McpServer(
-        { name: SERVER_NAME, version: SERVER_VERSION },
-        { instructions: SERVER_INSTRUCTIONS },
-      );
-      registerTools(server, client, logger);
-      return server;
-    },
-    { responseMode: 'json' },
-  );
+    const logger = deps.logger.child(extra.data.logFields);
+    const client = new MoodleClient({
+      baseUrl: extra.data.site,
+      token: authInfo.token,
+      fetch: deps.fetch,
+      logger,
+    });
+    const server = new McpServer(
+      { name: SERVER_NAME, version: SERVER_VERSION },
+      { instructions: SERVER_INSTRUCTIONS },
+    );
+    registerTools(server, client, logger);
+    return server;
+  });
 
   return {
     handle: (request, caller, logFields = {}) =>

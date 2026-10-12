@@ -9,5 +9,6 @@
   <rect width="64" height="64" rx="14" fill="url(#g)"/>
   <path d="M32 17 10 27l22 10 22-10z" fill="#fff"/>
   <path d="M19 34v9c0 3 6 7 13 7s13-4 13-7v-9l-13 6z" fill="#fff" fill-opacity=".85"/>
-  <path d="M54 28v14" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+  <path d="M50 29v13" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="50" cy="44.5" r="3" fill="#fff"/>
 </svg>

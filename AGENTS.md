@@ -20,6 +20,7 @@ pnpm workspaces, TypeScript throughout (Node and pnpm versions are pinned in `.n
 pnpm check     # ESLint + Prettier + typecheck + tests: run before finishing any change
 pnpm format    # eslint --fix and prettier --write
 pnpm types     # regenerate packages/server/worker-configuration.d.ts after editing wrangler.jsonc
+               # (move .dev.vars away first: wrangler adds its secrets to the types, which CI does not have)
 pnpm run deploy  # not `pnpm deploy`, which is a different built-in command
 ```
 
@@ -32,7 +33,8 @@ pnpm run deploy  # not `pnpm deploy`, which is a different built-in command
 - **Never log or return secrets.** Tokens, OAuth codes and sealed values, QR login keys and Moodle parameter values must
   not appear in logs, errors or responses. Tests assert this. Users are identified in logs only by `ip` and `tokenId`
   (`http/client-info.ts`). Log outcomes and sizes (`function`, `mime`, `format`, `bytes`, `ms`, `ok`, an error code),
-  never URLs, file names, file contents or parameter values.
+  never full URLs, file names, file contents or parameter values. The one exception is `site`, the validated
+  Moodle site address (https, no credentials or query), which names the institution and not the user.
 - **Site policy is a security boundary.** `X-Moodle-URL` is caller-controlled; `SitePolicy` keeps the Worker from becoming
   an open proxy. Apply it to any new code path that contacts a caller-supplied URL (as `/api/exchange` and the OAuth
   consent page do).

@@ -1,12 +1,16 @@
 import { classifyLink, decodeLaunchToken, LinkError, QRKind } from '@moodle-mcp/shared';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import * as z from 'zod/v4';
 
+import type { AppEnv } from '../http/context.ts';
+import { HttpError } from '../http/errors.ts';
+import type { Logger } from '../logger.ts';
 import { MoodleClient } from '../moodle/client.ts';
 import { MoodleError, MoodleTransportError } from '../moodle/errors.ts';
 import { MoodleFunction } from '../moodle/functions.ts';
-import { pkceChallenge } from '../oauth/encoding.ts';
+import { pkceChallenge, timingSafeEqualText } from '../oauth/encoding.ts';
 import { consentPage, errorPage } from '../oauth/pages.ts';
 import type { Sealer } from '../oauth/sealer.ts';
 import { clientSeal, codeSeal, type Credentials, Lifetime, refreshSeal, SealKind } from '../oauth/types.ts';
@@ -21,6 +25,14 @@ export const OAUTH_PATHS = {
 } as const;
 
 const MAX_REDIRECT_URIS = 10;
+/** Registration, consent and token requests are small forms or JSON; anything bigger is refused unread. */
+const MAX_BODY_BYTES = 16 * 1024;
+const limitBody = bodyLimit({
+  maxSize: MAX_BODY_BYTES,
+  onError: () => {
+    throw new HttpError(413, 'Request too large');
+  },
+});
 const HTML_HEADERS = {
   'Cache-Control': 'no-store',
   'Content-Security-Policy':
@@ -91,8 +103,13 @@ class GrantError extends Error {
  * (e.g. ChatGPT). The "login" is pasting a Moodle token; everything issued is a sealed blob that carries
  * that token, so nothing is stored. See `oauth/sealer.ts`.
  */
-export function oauthRoutes(deps: { sealer: Sealer; policy: SitePolicy; fetch: typeof fetch }): Hono {
-  const { sealer, policy } = deps;
+export function oauthRoutes(deps: {
+  sealer: Sealer;
+  policy: SitePolicy;
+  fetch: typeof fetch;
+  logger: Logger;
+}): Hono<AppEnv> {
+  const { sealer, policy, logger } = deps;
   const origin = (url: string) => new URL(url).origin;
 
   const openClient = async (clientId: string) => sealer.open(SealKind.Client, clientId, clientSeal);
@@ -128,22 +145,24 @@ export function oauthRoutes(deps: { sealer: Sealer; policy: SitePolicy; fetch: t
     if (!grant) throw new GrantError('invalid_grant', 'The authorization code is invalid or expired');
     if (body.redirect_uri !== grant.redirectUri || (body.client_id && body.client_id !== grant.clientId))
       throw new GrantError('invalid_grant', 'The code was issued for a different client or redirect');
-    if ((await pkceChallenge(body.code_verifier)) !== grant.challenge)
+    if (!(await timingSafeEqualText(await pkceChallenge(body.code_verifier), grant.challenge)))
       throw new GrantError('invalid_grant', 'PKCE verification failed');
     return issueTokens({ token: grant.token, site: grant.site }, grant.clientId);
   }
 
-  return new Hono()
+  return new Hono<AppEnv>()
     .use('/.well-known/*', cors())
     .use('/oauth/register', cors())
     .use('/oauth/token', cors())
+    .post('/oauth/*', limitBody)
     .get('/.well-known/oauth-protected-resource/*', (c) => c.json(protectedResource(origin(c.req.url))))
     .get(OAUTH_PATHS.resourceMetadata, (c) => c.json(protectedResource(origin(c.req.url))))
     .get('/.well-known/oauth-authorization-server/*', (c) => c.json(serverMetadata(origin(c.req.url))))
     .get(OAUTH_PATHS.serverMetadata, (c) => c.json(serverMetadata(origin(c.req.url))))
     .post(OAUTH_PATHS.register, async (c) => {
       const parsed = registrationRequest.safeParse(await c.req.json().catch(() => undefined));
-      if (!parsed.success)
+      if (!parsed.success) {
+        logger.warn('oauth register rejected: invalid redirect_uris', { ...c.get('client') });
         return c.json(
           {
             error: 'invalid_redirect_uri',
@@ -151,7 +170,9 @@ export function oauthRoutes(deps: { sealer: Sealer; policy: SitePolicy; fetch: t
           },
           400,
         );
+      }
       const clientId = await sealer.seal(SealKind.Client, { redirectUris: parsed.data.redirect_uris });
+      logger.info('oauth client registered', { ...c.get('client') });
       return c.json(
         {
           client_id: clientId,
@@ -200,8 +221,9 @@ export function oauthRoutes(deps: { sealer: Sealer; policy: SitePolicy; fetch: t
         throw error;
       }
 
-      const retry = (message: string) =>
-        c.html(
+      const retry = (reason: string, message: string, site?: string) => {
+        logger.warn(`oauth consent rejected: ${reason}`, { ...c.get('client'), redirectHost, site });
+        return c.html(
           consentPage({
             fields: request as Record<string, string>,
             redirectHost,
@@ -211,12 +233,13 @@ export function oauthRoutes(deps: { sealer: Sealer; policy: SitePolicy; fetch: t
           400,
           HTML_HEADERS,
         );
+      };
 
       let token: string;
       try {
         token = tokenFromInput(rawToken);
       } catch (error) {
-        if (error instanceof LinkError) return retry(error.message);
+        if (error instanceof LinkError) return retry('bad_token', error.message);
         throw error;
       }
 
@@ -224,14 +247,18 @@ export function oauthRoutes(deps: { sealer: Sealer; policy: SitePolicy; fetch: t
       try {
         site = policy.validate(requestedSite);
       } catch (error) {
-        if (error instanceof SiteNotAllowedError) return retry(error.message);
+        if (error instanceof SiteNotAllowedError) return retry('site_not_allowed', error.message);
         throw error;
       }
       try {
-        await new MoodleClient({ baseUrl: site, token, fetch: deps.fetch }).call(MoodleFunction.SiteInfo);
+        await new MoodleClient({ baseUrl: site, token, fetch: deps.fetch, logger }).call(
+          MoodleFunction.SiteInfo,
+        );
       } catch (error) {
-        if (error instanceof MoodleError) return retry('Moodle rejected this token. Check it and the site.');
-        if (error instanceof MoodleTransportError) return retry('Could not reach that Moodle site.');
+        if (error instanceof MoodleError)
+          return retry('moodle_rejected', 'Moodle rejected this token. Check it and the site.', site);
+        if (error instanceof MoodleTransportError)
+          return retry('moodle_unreachable', 'Could not reach that Moodle site.', site);
         throw error;
       }
 
@@ -246,6 +273,7 @@ export function oauthRoutes(deps: { sealer: Sealer; policy: SitePolicy; fetch: t
         },
         Lifetime.Code,
       );
+      logger.info('oauth code issued', { ...c.get('client'), redirectHost, site });
       const target = new URL(request.redirect_uri);
       target.searchParams.set('code', code);
       if (request.state !== undefined) target.searchParams.set('state', request.state);
@@ -257,9 +285,12 @@ export function oauthRoutes(deps: { sealer: Sealer; policy: SitePolicy; fetch: t
         const body = tokenRequest.safeParse(await c.req.parseBody());
         if (!body.success)
           throw new GrantError('invalid_request', 'Missing or invalid parameters for this grant type');
-        return c.json(await redeem(body.data));
+        const tokens = await redeem(body.data);
+        logger.info(`oauth token issued (${body.data.grant_type})`, { ...c.get('client') });
+        return c.json(tokens);
       } catch (error) {
         if (!(error instanceof GrantError)) throw error;
+        logger.warn(`oauth token rejected: ${error.code}`, { ...c.get('client'), reason: error.message });
         return c.json({ error: error.code, error_description: error.message }, error.status);
       }
     });
