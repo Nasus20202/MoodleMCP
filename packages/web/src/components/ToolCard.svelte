@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { ToolInfo } from '@moodle-mcp/shared';
 
-  import { summary, toolArguments } from '../lib/tools';
+  import { codeSegments, summary, toolArguments } from '../lib/tools';
 
   let { tool, open = $bindable(false) }: { tool: ToolInfo; open?: boolean } = $props();
   const args = $derived(toolArguments(tool));
@@ -15,7 +15,10 @@
     {#if tool.readOnly}<span class="badge hidden shrink-0 sm:inline">read-only</span>{/if}
   </summary>
   <div class="pb-3 pl-6">
-    <p class="muted text-sm">{tool.description}</p>
+    <p class="muted text-sm">
+      {#each codeSegments(tool.description) as part, i (i)}{#if part.code}<code>{part.text}</code
+          >{:else}{part.text}{/if}{/each}
+    </p>
     {#if args.length > 0}
       <dl class="params">
         {#each args as arg (arg.name)}
@@ -27,7 +30,8 @@
             >
           </dt>
           <dd>
-            {arg.description ?? ''}
+            {#each codeSegments(arg.description ?? '') as part, i (i)}{#if part.code}<code>{part.text}</code
+                >{:else}{part.text}{/if}{/each}
             {#if arg.default !== undefined}<span class="opacity-70">(default: {arg.default})</span>{/if}
           </dd>
         {/each}

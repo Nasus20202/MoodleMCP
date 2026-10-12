@@ -1,6 +1,6 @@
 import type { ToolInfo } from '@moodle-mcp/shared';
 
-import type { ToolArgument } from './types/tools';
+import type { TextSegment, ToolArgument } from './types/tools';
 
 /** Flatten a tool's JSON schema into a list of arguments for display. */
 export function toolArguments(tool: ToolInfo): ToolArgument[] {
@@ -20,4 +20,16 @@ export function toolArguments(tool: ToolInfo): ToolArgument[] {
 export function summary(description: string): string {
   const first = /^[\s\S]+?[.!?:](?=\s+[A-Z`"'(]|$)/.exec(description)?.[0] ?? description;
   return first.replace(/`/g, '').replace(/[.:]$/, '');
+}
+
+/** Splits text on `backtick` spans so they can be rendered as code. An unmatched backtick stays plain text. */
+export function codeSegments(text: string): TextSegment[] {
+  return text
+    .split(/(`[^`]+`)/)
+    .filter((part) => part !== '')
+    .map((part) =>
+      part.length > 2 && part.startsWith('`') && part.endsWith('`')
+        ? { text: part.slice(1, -1), code: true }
+        : { text: part, code: false },
+    );
 }

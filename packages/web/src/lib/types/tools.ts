@@ -7,3 +7,9 @@ export interface ToolArgument {
   /** Shown when the argument is optional and has a default value. */
   default?: string;
 }
+
+/** A run of description text; `code` runs were wrapped in backticks. */
+export interface TextSegment {
+  text: string;
+  code: boolean;
+}
