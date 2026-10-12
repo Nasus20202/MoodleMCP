@@ -1,9 +1,9 @@
 name: CI
 
+# Pull requests only: a push trigger as well would run everything twice for every PR branch.
+# main is verified by the deploy workflow.
 on:
   pull_request:
-  push:
-    branches-ignore: [main] # main is verified by the deploy workflow
   workflow_call:
 
 permissions:

@@ -20,6 +20,7 @@ pnpm workspaces, TypeScript throughout (Node and pnpm versions are pinned in `.n
 pnpm check     # ESLint + Prettier + typecheck + tests: run before finishing any change
 pnpm format    # eslint --fix and prettier --write
 pnpm types     # regenerate packages/server/worker-configuration.d.ts after editing wrangler.jsonc
+               # (move .dev.vars away first: wrangler adds its secrets to the types, which CI does not have)
 pnpm run deploy  # not `pnpm deploy`, which is a different built-in command
 ```
 
