@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as z from 'zod/v4';
 
-import { pkceChallenge } from './encoding.ts';
+import { pkceChallenge, timingSafeEqualText } from './encoding.ts';
 import { Sealer } from './sealer.ts';
 
 const SECRET = 'a-secret-that-is-at-least-32-characters-long';
@@ -54,5 +54,14 @@ describe('pkceChallenge', () => {
     expect(await pkceChallenge('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk')).toBe(
       'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
     );
+  });
+});
+
+describe('timingSafeEqualText', () => {
+  it('is true only for identical strings', async () => {
+    expect(await timingSafeEqualText('abc', 'abc')).toBe(true);
+    expect(await timingSafeEqualText('abc', 'abd')).toBe(false);
+    expect(await timingSafeEqualText('abc', 'abcd')).toBe(false);
+    expect(await timingSafeEqualText('', '')).toBe(true);
   });
 });

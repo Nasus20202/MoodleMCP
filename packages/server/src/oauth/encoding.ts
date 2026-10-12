@@ -21,3 +21,14 @@ const sha256 = async (text: string) =>
 
 /** The S256 PKCE challenge for a verifier (RFC 7636). */
 export const pkceChallenge = async (verifier: string): Promise<string> => toBase64Url(await sha256(verifier));
+
+/**
+ * Compares two strings without leaking, through timing, where they first differ. Both are hashed first, so
+ * the comparison always covers 32 bytes and never short-circuits on a length mismatch.
+ */
+export async function timingSafeEqualText(a: string, b: string): Promise<boolean> {
+  const [x, y] = await Promise.all([sha256(a), sha256(b)]);
+  let diff = 0;
+  for (const [i, byte] of x.entries()) diff |= byte ^ (y[i] ?? 0);
+  return diff === 0;
+}
