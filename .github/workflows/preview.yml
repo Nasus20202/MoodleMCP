@@ -24,7 +24,7 @@ jobs:
       pull-requests: write
     environment:
       name: preview-pr-${{ github.event.pull_request.number }}
-      url: ${{ steps.preview.outputs.url }}
+      url: ${{ steps.preview.outputs.preview-url }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -42,16 +42,12 @@ jobs:
       # A Cloudflare Worker Preview: its own deployment of this worker, with the settings of the `previews` block in
       # wrangler.jsonc. Previews inherit no secrets from production.
       - id: preview
-        run: |
-          set -o pipefail
-          # The build step also writes to stdout, so the JSON is the part from the first line that starts with `{`.
-          pnpm exec wrangler preview --name "pr-$PR" --json | tee "$RUNNER_TEMP/preview.out"
-          url="$(sed -n '/^{/,$p' "$RUNNER_TEMP/preview.out" | jq -er '.preview.urls[0]')"
-          echo "url=$url" >> "$GITHUB_OUTPUT"
-        env:
-          PR: ${{ github.event.pull_request.number }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: pnpm
+          command: preview --name pr-${{ github.event.pull_request.number }}
 
       # The secret is set per Preview (it makes a new deployment), so no Previews Base configuration is needed.
       # Previews get their own secret so a leaked preview cannot mint production tokens.
@@ -66,7 +62,7 @@ jobs:
       - name: Comment preview URL
         env:
           GH_TOKEN: ${{ github.token }}
-          URL: ${{ steps.preview.outputs.url }}
+          URL: ${{ steps.preview.outputs.preview-url }}
           SHA: ${{ github.event.pull_request.head.sha }}
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
