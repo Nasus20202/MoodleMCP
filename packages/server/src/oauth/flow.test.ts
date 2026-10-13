@@ -141,7 +141,7 @@ describe('authorization', () => {
     const params = new URLSearchParams(await authorizeParams(await register(h)));
     const page = await (await h.request(`/oauth/authorize?${params.toString()}`)).text();
     expect(page).toContain('How do I get my token?');
-    expect(page).toContain('Model Context Protocol');
+    expect(page).toContain('/assets/app.css');
     expect(page).toContain(`${TEST_SITE}/admin/tool/mobile/launch.php?`);
     expect(page).toContain('confirmed=1');
   });

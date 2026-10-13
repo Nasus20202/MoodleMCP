@@ -35,8 +35,7 @@ const limitBody = bodyLimit({
 });
 const HTML_HEADERS = {
   'Cache-Control': 'no-store',
-  'Content-Security-Policy':
-    "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; frame-ancestors 'none'",
+  'Content-Security-Policy': "default-src 'none'; style-src 'self'; img-src 'self'; frame-ancestors 'none'",
   'Referrer-Policy': 'no-referrer',
 } as const;
 
