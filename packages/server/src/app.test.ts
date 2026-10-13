@@ -245,6 +245,19 @@ describe('read_file', () => {
       ]);
     });
 
+    it('logs the conversion with its token count, but not the file', async () => {
+      const { logs } = await readWith(serve('file body', 'application/pdf'));
+      expect(logLines(logs).find((l) => l.msg === 'file converted')).toMatchObject({
+        level: 'info',
+        format: 'pdf',
+        mode: 'markdown',
+        bytes: 9,
+        chars: 11,
+        tokens: 3,
+      });
+      expect(logs.join('\n')).not.toMatch(/notes\.txt|file body/);
+    });
+
     it('uses the type from the extension when Moodle says octet-stream', async () => {
       const file = `${TEST_SITE}/webservice/pluginfile.php/1/mod_resource/content/1/slides.pdf`;
       const { json, calls } = await readWith(serve('x', 'application/octet-stream'), { file_url: file });

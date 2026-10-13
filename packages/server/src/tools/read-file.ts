@@ -114,18 +114,19 @@ async function readText(context: ToolContext, args: Input): Promise<ToolContent[
   if (choice.mode === ReadMode.Markdown && markdown) {
     const started = Date.now();
     try {
-      const text = await toMarkdown(markdown, file, effectiveType(file));
+      const { text, tokens } = await toMarkdown(markdown, file, effectiveType(file));
       logger.info('file converted', {
         format,
         mode: choice.mode,
         mime: file.mimeType,
         bytes: file.bytes.byteLength,
         chars: text.length,
+        tokens,
         ms: Date.now() - started,
       });
       return textResult(file, args, { format, mode: ReadMode.Markdown, text });
     } catch (error) {
-      // Quota spent, an outage or a file it cannot handle: our own parsers still have a go.
+      // Quota spent, an outage, a timeout or a file it cannot handle: our own parsers still have a go.
       logger.warn('markdown conversion failed', {
         format,
         mime: file.mimeType,

@@ -203,6 +203,8 @@ describe('read_file with Workers AI bound', () => {
     });
     // The file reaches Workers AI byte for byte.
     expect(Buffer.from(world.ai.calls[0]?.bytes ?? []).toString()).toContain('Lecture one slides');
+    const logs = await world.worker.logs();
+    expect(logs.find((l) => l.msg === 'file converted')).toMatchObject({ format: 'pdf', tokens: 11 });
   });
 
   it('converts Word documents and HTML', async () => {

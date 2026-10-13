@@ -68,7 +68,7 @@ export function fakeMarkdown(respond: (call: ConversionCall) => string | Error =
       const common = { id: '1', name: file.name, mimeType: file.blob.type };
       return out instanceof Error
         ? { ...common, format: 'error', error: out.message }
-        : { ...common, format: 'markdown', tokens: 0, data: out };
+        : { ...common, format: 'markdown', tokens: Math.ceil(out.length / 4), data: out };
     },
   };
   return { converter, calls };
