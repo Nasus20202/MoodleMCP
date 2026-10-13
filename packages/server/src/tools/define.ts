@@ -19,7 +19,7 @@ export interface ToolContext {
   client: MoodleClient;
   logger: Logger;
   /** Workers AI's document converter, when the binding is configured. */
-  markdown?: MarkdownConverter;
+  markdown?: MarkdownConverter | undefined;
 }
 
 /** A read-only tool: validated input in, content blocks out (raw Moodle JSON for most tools). */

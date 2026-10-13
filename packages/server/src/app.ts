@@ -19,7 +19,7 @@ export interface AppDeps {
   fetch?: typeof fetch;
   logger?: Logger;
   /** Workers AI's `toMarkdown`, from the AI binding; without it read_file always extracts text itself. */
-  markdown?: MarkdownConverter;
+  markdown?: MarkdownConverter | undefined;
 }
 
 /** Builds the HTTP app: the MCP endpoint at /mcp and the setup page's API under /api. */
@@ -34,11 +34,7 @@ export function createApp(config: AppConfig, deps: AppDeps = {}): Hono<AppEnv> {
     .use(requestLogger(logger))
     .route(
       '/',
-      mcpRoutes(
-        createMcpEndpoint({ fetch: fetchImpl, logger, ...(deps.markdown && { markdown: deps.markdown }) }),
-        policy,
-        sealer,
-      ),
+      mcpRoutes(createMcpEndpoint({ fetch: fetchImpl, logger, markdown: deps.markdown }), policy, sealer),
     )
     .route('/', apiRoutes({ policy, fetch: fetchImpl, oauth: sealer !== undefined }));
   if (sealer) app.route('/', oauthRoutes({ sealer, policy, fetch: fetchImpl, logger }));

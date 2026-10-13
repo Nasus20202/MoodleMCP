@@ -9,9 +9,11 @@ let app: App | undefined;
 
 function buildApp(env: Env): App {
   const config = loadConfig(env);
-  // `wrangler dev --local` has no AI binding; read_file then extracts text itself.
-  const ai = env.AI as Ai | undefined;
-  return createApp(config, { logger: createLogger(config.logLevel), ...(ai && { markdown: ai }) });
+  return createApp(config, {
+    logger: createLogger(config.logLevel),
+    // `wrangler dev --local` has no AI binding; read_file then extracts text itself.
+    markdown: env.AI,
+  });
 }
 
 export default {

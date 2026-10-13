@@ -40,7 +40,7 @@ const SERVER_INSTRUCTIONS = [
 export interface McpEndpointDeps {
   fetch: typeof fetch;
   logger: Logger;
-  markdown?: MarkdownConverter;
+  markdown?: MarkdownConverter | undefined;
 }
 
 export function createMcpEndpoint(deps: McpEndpointDeps): McpEndpoint {
@@ -59,7 +59,7 @@ export function createMcpEndpoint(deps: McpEndpointDeps): McpEndpoint {
       { name: SERVER_NAME, version: SERVER_VERSION },
       { instructions: SERVER_INSTRUCTIONS },
     );
-    registerTools(server, { client, logger, ...(deps.markdown && { markdown: deps.markdown }) });
+    registerTools(server, { client, logger, markdown: deps.markdown });
     return server;
   });
 
