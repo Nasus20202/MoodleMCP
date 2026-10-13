@@ -46,6 +46,10 @@ pnpm run deploy  # not `pnpm deploy`, which is a different built-in command
   follows the same rule: `oauth/sealer.ts` seals client ids, codes, access and refresh tokens (AES-GCM, key from
   `OAUTH_SECRET`), and the access token carries the Moodle token. Redirect URIs live inside the sealed client id and are
   matched exactly; never redirect to an unvalidated URI.
+- **The AI binding is optional.** `env.AI` (Workers AI `toMarkdown`, for `read_file`'s markdown mode) is absent under
+  `pnpm dev` (`wrangler dev --local`) and in e2e suites unless they ask for the mock (`useWorld({}, { ai: true })`,
+  `src/mock/ai.ts`), and a conversion can fail when the daily allowance is spent: always fall back to extraction. Never
+  let it convert images unless the caller asked for markdown.
 - **Call `fetch` as a plain function.** On Workers, `this.fetchImpl(...)` throws "Illegal invocation" (regression test in
   `moodle/client.test.ts`).
 - **Types live in their own files** (`packages/shared/src/api.ts`, `packages/web/src/lib/types/`). API shapes are defined

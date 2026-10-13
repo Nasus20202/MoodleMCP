@@ -1,9 +1,14 @@
 import { decodeEntities } from './text.ts';
 import { unzipText } from './zip.ts';
 
+/** One compiled pattern per attribute name: building a RegExp for every cell dominated large sheets. */
+const ATTR_PATTERNS = new Map<string, RegExp>();
+
 /** Value of an XML attribute in `tag`, entity-decoded. */
 function attr(tag: string, name: string): string | undefined {
-  const value = new RegExp(`\\b${name}="([^"]*)"`).exec(tag)?.[1];
+  let pattern = ATTR_PATTERNS.get(name);
+  if (!pattern) ATTR_PATTERNS.set(name, (pattern = new RegExp(`\\b${name}="([^"]*)"`)));
+  const value = pattern.exec(tag)?.[1];
   return value === undefined ? undefined : decodeEntities(value);
 }
 

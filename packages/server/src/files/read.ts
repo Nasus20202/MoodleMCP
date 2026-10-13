@@ -1,8 +1,6 @@
 import type { DownloadedFile } from '../moodle/client.ts';
+import type { PdfChunk, PdfWindow } from './pdf.ts';
 import { htmlToText } from './text.ts';
-
-/** PDF.js `VerbosityLevel.ERRORS`: its font warnings ("TT: undefined function") are noise, the text still extracts. */
-const PDFJS_ERRORS_ONLY = 0;
 
 /** Largest image handed to the model as an image rather than described. */
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
@@ -83,13 +81,14 @@ export interface ReadOptions {
 
 export type FileReading =
   | { kind: 'text'; format: string; text: string; pages?: number }
+  | { kind: 'pdf'; chunk: PdfChunk }
   | { kind: 'image'; mimeType: string; base64: string }
   | { kind: 'unsupported'; reason: string };
 
 const extensionOf = (filename: string) => /\.([a-z0-9]+)$/i.exec(filename)?.[1]?.toLowerCase() ?? '';
 
 /** Prefers the extension when the server only says "octet-stream", which Moodle does for many files. */
-function effectiveType({ mimeType, filename }: Pick<DownloadedFile, 'mimeType' | 'filename'>): string {
+export function effectiveType({ mimeType, filename }: Pick<DownloadedFile, 'mimeType' | 'filename'>): string {
   const generic =
     mimeType === '' || mimeType === 'application/octet-stream' || mimeType === 'application/force-download';
   return generic ? (MIME_BY_EXTENSION[extensionOf(filename)] ?? mimeType) : mimeType;
@@ -97,7 +96,7 @@ function effectiveType({ mimeType, filename }: Pick<DownloadedFile, 'mimeType' |
 
 const decodeUtf8 = (bytes: Uint8Array) => new TextDecoder('utf-8').decode(bytes);
 
-type Kind = 'pdf' | 'docx' | 'pptx' | 'xlsx' | 'html' | 'image' | 'text';
+export type Kind = 'pdf' | 'docx' | 'pptx' | 'xlsx' | 'html' | 'image' | 'text';
 
 /** What we can do with a file, judged from its metadata alone (so unreadable files are never downloaded). */
 export function classify(meta: Pick<DownloadedFile, 'mimeType' | 'filename'>): Kind | null {
@@ -120,14 +119,18 @@ export const unsupportedReason = (meta: Pick<DownloadedFile, 'mimeType' | 'filen
 /**
  * Extracts what a model can read from a downloaded file. The parsers (PDF.js, fflate) are large and most
  * requests never read a document, so each is loaded on first use rather than when the Worker starts.
+ *
+ * PDFs are read only as far as `pdfWindow` reaches, because extracting a page is what costs CPU; every other
+ * format is cheap enough to extract whole and page through with `pageText`.
  */
-export async function readFile(file: DownloadedFile): Promise<FileReading> {
+export async function readFile(
+  file: DownloadedFile,
+  pdfWindow: PdfWindow = { page: 1, offset: 0, maxChars: Infinity },
+): Promise<FileReading> {
   switch (classify(file)) {
     case 'pdf': {
-      const { extractText, getDocumentProxy } = await import('unpdf');
-      const pdf = await getDocumentProxy(new Uint8Array(file.bytes), { verbosity: PDFJS_ERRORS_ONLY });
-      const { text, totalPages } = await extractText(pdf, { mergePages: true });
-      return { kind: 'text', format: 'pdf', text: text.trim(), pages: totalPages };
+      const { readPdf } = await import('./pdf.ts');
+      return { kind: 'pdf', chunk: await readPdf(file.bytes, pdfWindow) };
     }
     case 'docx': {
       const { docxText } = await import('./office.ts');
@@ -164,11 +167,10 @@ export function pageText(text: string, { offset, maxChars }: ReadOptions) {
   return { slice, totalChars: text.length, nextOffset: end < text.length ? end : null };
 }
 
-/** `btoa` over chunks, because spreading a large array into `String.fromCharCode` overflows the stack. */
-export function toBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  }
-  return btoa(binary);
+/** `Uint8Array.prototype.toBase64` (ES2026), which TypeScript's lib does not declare yet. */
+interface Base64Encodable {
+  toBase64(): string;
 }
+
+/** Native in Workers and in Node 25+, so the unit tests run the same encoder as production. */
+export const toBase64 = (bytes: Uint8Array): string => (bytes as Uint8Array & Base64Encodable).toBase64();

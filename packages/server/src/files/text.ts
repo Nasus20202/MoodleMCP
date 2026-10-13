@@ -8,6 +8,8 @@ const NAMED_ENTITIES: Record<string, string> = {
 };
 
 export function decodeEntities(text: string): string {
+  // Most strings (spreadsheet cells especially) have no entities; skip the regex for them.
+  if (!text.includes('&')) return text;
   return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, entity: string) => {
     if (entity.startsWith('#')) {
       const code =

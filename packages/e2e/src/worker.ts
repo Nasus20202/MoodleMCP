@@ -1,7 +1,10 @@
 import { convertV4MiniflareOptions, Miniflare } from 'miniflare';
 
+import { AI_WORKER_SCRIPT, type MockAi } from './mock/ai.ts';
 import { SITE_URL } from './mock/data.ts';
 import type { MockNetwork } from './mock/moodle.ts';
+
+const COMPATIBILITY_DATE = '2026-10-12';
 
 export const OAUTH_SECRET = 'e2e-oauth-secret-that-is-long-enough-0123456789';
 
@@ -17,6 +20,8 @@ export interface WorkerOptions {
   network: MockNetwork;
   /** Environment bindings, as in wrangler.jsonc; merged over the defaults. */
   env?: Record<string, string>;
+  /** Stands in for the `AI` binding; without it the Worker has none, as under `wrangler dev --local`. */
+  ai?: MockAi;
 }
 
 export interface RunningWorker {
@@ -38,21 +43,39 @@ export interface RunningWorker {
  */
 export async function startWorker(options: WorkerOptions): Promise<RunningWorker> {
   const raw: string[] = [];
+  const { ai } = options;
   const miniflare = new Miniflare(
     convertV4MiniflareOptions({
-      modules: true,
-      scriptPath: `${options.bundleDir}/worker.js`,
-      modulesRoot: options.bundleDir,
-      compatibilityDate: '2026-10-12',
-      compatibilityFlags: ['nodejs_compat'],
-      bindings: {
-        MOODLE_URL: SITE_URL,
-        ALLOWED_MOODLE_HOSTS: '',
-        LOG_LEVEL: 'debug',
-        ...options.env,
-      },
-      outboundService: (request) => options.network.fetch(request),
       handleStructuredLogs: (log) => raw.push(log.message),
+      workers: [
+        {
+          name: 'moodle-mcp',
+          modules: true,
+          scriptPath: `${options.bundleDir}/worker.js`,
+          modulesRoot: options.bundleDir,
+          compatibilityDate: COMPATIBILITY_DATE,
+          compatibilityFlags: ['nodejs_compat'],
+          bindings: {
+            MOODLE_URL: SITE_URL,
+            ALLOWED_MOODLE_HOSTS: '',
+            LOG_LEVEL: 'debug',
+            ...options.env,
+          },
+          outboundService: (request) => options.network.fetch(request),
+          ...(ai && { serviceBindings: { AI: { name: 'workers-ai', entrypoint: 'Ai' } } }),
+        },
+        ...(ai
+          ? [
+              {
+                name: 'workers-ai',
+                modules: true,
+                script: AI_WORKER_SCRIPT,
+                compatibilityDate: COMPATIBILITY_DATE,
+                serviceBindings: { CONVERTER: (request: Request) => ai.handle(request) },
+              },
+            ]
+          : []),
+      ],
     }),
   );
   const origin = (await miniflare.ready).origin;

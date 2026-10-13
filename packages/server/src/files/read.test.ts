@@ -32,8 +32,10 @@ function tinyPdf(text: string): Uint8Array {
 describe('readFile', () => {
   it('extracts text from a PDF', async () => {
     const result = await readFile(file('a.pdf', tinyPdf('Hello PDF'), 'application/pdf'));
-    expect(result).toMatchObject({ kind: 'text', format: 'pdf', pages: 1 });
-    expect(result.kind === 'text' && result.text).toContain('Hello PDF');
+    expect(result).toEqual({
+      kind: 'pdf',
+      chunk: { text: '--- Page 1 ---\nHello PDF', pages: 1, firstPage: 1, lastPage: 1, next: null },
+    });
   });
 
   it('extracts paragraphs from a DOCX', async () => {
@@ -113,7 +115,7 @@ describe('readFile', () => {
 
   it('trusts the extension when the server only says octet-stream', async () => {
     const result = await readFile(file('a.pdf', tinyPdf('Octet'), 'application/octet-stream'));
-    expect(result).toMatchObject({ kind: 'text', format: 'pdf' });
+    expect(result.kind).toBe('pdf');
   });
 
   it('returns small images as base64 and refuses large ones', async () => {
