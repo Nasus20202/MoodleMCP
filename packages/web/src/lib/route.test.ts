@@ -1,24 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
-import { isConnectPath, isHomePath, pageTitle } from './route';
+import { pageTitle, Route, routeOf } from './route';
 
-describe('isHomePath', () => {
-  it('accepts the root and index.html', () => {
-    expect(isHomePath('/')).toBe(true);
-    expect(isHomePath('/index.html')).toBe(true);
+describe('routeOf', () => {
+  it('shows the setup page at the root and index.html', () => {
+    expect(routeOf('/')).toBe(Route.Home);
+    expect(routeOf('/index.html')).toBe(Route.Home);
   });
 
-  it('rejects everything else', () => {
-    expect(isHomePath('/sitemap.xml')).toBe(false);
-    expect(isHomePath('/foo/')).toBe(false);
+  it('shows the consent screen at /connect only', () => {
+    expect(routeOf('/connect')).toBe(Route.Connect);
+    expect(routeOf('/connect/')).toBe(Route.NotFound);
   });
-});
 
-describe('isConnectPath', () => {
-  it('accepts only /connect', () => {
-    expect(isConnectPath('/connect')).toBe(true);
-    expect(isConnectPath('/connect/')).toBe(false);
-    expect(isConnectPath('/')).toBe(false);
+  it('shows the not-found page for everything else', () => {
+    expect(routeOf('/sitemap.xml')).toBe(Route.NotFound);
+    expect(routeOf('/foo/')).toBe(Route.NotFound);
   });
 });
 
