@@ -36,7 +36,7 @@
       "vars": {
         "MOODLE_URL": "https://enauczanie.pg.edu.pl/2025",
         "ALLOWED_MOODLE_HOSTS": "*",
-        "LOG_LEVEL": "debug",
+        "LOG_LEVEL": "info",
       },
     },
   },
