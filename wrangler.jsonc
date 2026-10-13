@@ -27,19 +27,8 @@
     "ALLOWED_MOODLE_HOSTS": "*",
     "LOG_LEVEL": "info",
   },
-  // Per-PR preview workers (.github/workflows/preview.yml), deployed with `--env preview --name moodle-mcp-pr-<n>`.
-  // Previews live on workers.dev instead of the production domain.
-  "env": {
-    "preview": {
-      // Explicit: `routes` is inherited from the top level, so omitting it would claim the production domain.
-      "routes": [],
-      "workers_dev": true,
-      "ai": { "binding": "AI" },
-      "vars": {
-        "MOODLE_URL": "https://enauczanie.pg.edu.pl/2025",
-        "ALLOWED_MOODLE_HOSTS": "*",
-        "LOG_LEVEL": "info",
-      },
-    },
-  },
+  // Per-PR previews (.github/workflows/preview.yml) are Cloudflare preview URLs: `wrangler versions upload
+  // --preview-alias pr-<n>` serves a version of this worker at pr-<n>-moodle-mcp.<subdomain>.workers.dev.
+  // Set explicitly because it would otherwise follow `workers_dev`, which stays off for production.
+  "preview_urls": true,
 }
