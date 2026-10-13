@@ -177,3 +177,73 @@ describe('read_file against a mock Moodle file server', () => {
     });
   });
 });
+
+describe('read_file with Workers AI bound', () => {
+  const world = useWorld({}, { ai: true, clearLogs: true });
+  const read = async (file_url: string, extra: Record<string, unknown> = {}) => {
+    const result = await McpClient.bearer(world.worker, ALICE.token).call('read_file', {
+      file_url,
+      ...extra,
+    });
+    return {
+      result,
+      json: () => JSON.parse(result.content.at(-1)?.text ?? 'null') as FileText & { mode: string },
+    };
+  };
+
+  it('converts a PDF to Markdown through the binding, without its metadata or images', async () => {
+    const { json } = await read(FILE_URLS.slides);
+    expect(json()).toMatchObject({ format: 'pdf', mode: 'markdown', next_offset: null });
+    expect(json().text).toBe('## Contents\n### Page 1\nLecture one slides');
+    expect(world.ai.calls).toHaveLength(1);
+    expect(world.ai.calls[0]).toMatchObject({
+      name: 'slides.pdf',
+      type: 'application/pdf',
+      options: { conversionOptions: { pdf: { metadata: false, images: { convert: false } } } },
+    });
+    // The file reaches Workers AI byte for byte.
+    expect(Buffer.from(world.ai.calls[0]?.bytes ?? []).toString()).toContain('Lecture one slides');
+  });
+
+  it('converts Word documents and HTML', async () => {
+    expect((await read(fileUrl('syllabus.docx', 303))).json()).toMatchObject({
+      mode: 'markdown',
+      text: 'Syllabus\nWeek 1: sorting',
+    });
+    expect((await read(fileUrl('page.html', 306))).json()).toMatchObject({
+      format: 'html',
+      mode: 'markdown',
+    });
+  });
+
+  it('returns images as images, and describes one only when markdown is asked for', async () => {
+    const image = await read(fileUrl('diagram.png', 304));
+    expect(image.result.content[0]).toMatchObject({ type: 'image', mimeType: 'image/png' });
+    expect(world.ai.calls).toEqual([]);
+
+    const described = await read(fileUrl('diagram.png', 304), { mode: 'markdown' });
+    expect(described.json()).toMatchObject({ format: 'image', mode: 'markdown' });
+    expect(described.json().text).toContain('diagram');
+  });
+
+  it('extracts instead when asked to, or when a PDF page is given', async () => {
+    expect((await read(FILE_URLS.slides, { mode: 'extract' })).json()).toMatchObject({ mode: 'extract' });
+    expect((await read(FILE_URLS.slides, { page: 1 })).json()).toMatchObject({ mode: 'markdown' });
+    expect((await read(FILE_URLS.slides, { page: 2 })).json()).toMatchObject({ mode: 'extract' });
+    expect(world.ai.calls).toHaveLength(1);
+  });
+
+  it('falls back to extraction when Workers AI cannot convert, without logging the file', async () => {
+    world.ai.failure = 'slides.pdf: daily free allocation of neurons exceeded';
+    const { json } = await read(FILE_URLS.slides);
+    expect(json()).toMatchObject({ mode: 'extract', text: '--- Page 1 ---\nLecture one slides' });
+    expect(json().note).toContain('Markdown conversion failed');
+    const logs = await world.worker.logs();
+    expect(logs.find((l) => l.msg === 'markdown conversion failed')).toMatchObject({
+      level: 'warn',
+      format: 'pdf',
+      error: 'MarkdownConversionError',
+    });
+    expect(await world.worker.rawLogs()).not.toMatch(/slides\.pdf|neurons|pluginfile/);
+  });
+});
