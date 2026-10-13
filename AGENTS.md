@@ -11,7 +11,9 @@ pnpm workspaces, TypeScript throughout (Node and pnpm versions are pinned in `.n
   source, no build step.
 - `packages/server`: the Worker. Entry `src/worker.ts`; Hono app in `app.ts`; MCP endpoint `mcp.ts`; `moodle/` client and
   function allow-list; `tools/`; `oauth/` and `routes/oauth.ts`.
-- `packages/web`: Svelte 5 + Tailwind 4, built by Vite into `packages/web/dist` and served as static assets.
+- `packages/web`: Svelte 5 + Tailwind 4, built by Vite into `packages/web/dist` and served as static assets. Besides the
+  setup page it holds the OAuth consent screen at `/connect` (`/oauth/authorize` redirects there; `/oauth/request` and
+  `POST /oauth/authorize` are its JSON backend). `public/_headers` gives it a no-framing CSP.
 - `packages/e2e`: end-to-end tests. They run the bundled Worker in workerd (Miniflare) with the outbound network replaced
   by a mock Moodle (`src/mock/`); `src/worker.ts` boots it, `src/world.ts` is the per-suite setup. Browser tests
   (Playwright, `src/browser/*.spec.ts`, run with `pnpm test:browser`) drive the built setup page and the OAuth

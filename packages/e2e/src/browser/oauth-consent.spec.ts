@@ -105,7 +105,7 @@ test('keeps the user on the page, with an explanation, when Moodle rejects the t
 
   await expect(page.getByText('Moodle rejected this token')).toBeVisible();
   await expect(page.getByLabel(TOKEN_FIELD)).toBeVisible();
-  expect(new URL(page.url()).pathname).toBe('/oauth/authorize');
+  expect(new URL(page.url()).pathname).toBe('/connect');
 
   // Trying again with a good token works from the same page.
   await submit(page, ALICE.token);
@@ -142,6 +142,7 @@ test('shows an error page, and never redirects, for an unregistered redirect add
 
 test('cannot be framed by another site (clickjacking protection)', async ({ page, stack }) => {
   await startAuthorization(page, stack);
+  expect(new URL(page.url()).pathname).toBe('/connect');
   const response = await page.request.get(page.url());
   expect(response.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
   expect(response.headers()['referrer-policy']).toBe('no-referrer');

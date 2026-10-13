@@ -42,3 +42,16 @@ export interface ExchangeResponse {
 export interface ErrorResponse {
   error: string;
 }
+
+/** What the OAuth consent screen shows for an authorization request. */
+export interface AuthorizeContextResponse {
+  /** Host the user will be sent back to; shown so they can see who is asking. */
+  redirectHost: string;
+  /** The server's default Moodle site, to prefill the site field. */
+  defaultSite: string;
+}
+
+/** The answer to an accepted consent form: where to send the user, carrying the authorization code. */
+export interface AuthorizeSubmitResponse {
+  redirectUrl: string;
+}

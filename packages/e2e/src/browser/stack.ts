@@ -38,6 +38,23 @@ export interface StackOptions {
   oauth: boolean;
 }
 
+/** Reads Cloudflare's `_headers` file (path rules followed by indented `Name: value` lines) into path → headers. */
+function parseHeaders(text: string): Map<string, Record<string, string>> {
+  const rules = new Map<string, Record<string, string>>();
+  let current: Record<string, string> | undefined;
+  for (const line of text.split('\n')) {
+    if (!line.trim() || line.startsWith('#')) continue;
+    if (/^\s/.test(line)) {
+      const [name, ...value] = line.trim().split(':');
+      if (current && name) current[name] = value.join(':').trim();
+    } else {
+      current = {};
+      rules.set(line.trim(), current);
+    }
+  }
+  return rules;
+}
+
 const readBody = async (req: IncomingMessage): Promise<Buffer> => {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(chunk as Buffer);
@@ -58,6 +75,8 @@ export async function startStack(options: StackOptions): Promise<Stack> {
     network,
     env: { ALLOWED_MOODLE_HOSTS: '*', ...(options.oauth && { OAUTH_SECRET }) },
   });
+
+  const assetHeaders = parseHeaders(await readFile(join(options.webDir, '_headers'), 'utf8').catch(() => ''));
 
   const server: Server = createServer((req, res) => {
     void (async () => {
@@ -91,7 +110,10 @@ export async function startStack(options: StackOptions): Promise<Stack> {
         file = join(options.webDir, 'index.html');
         content = await readFile(file);
       }
-      res.writeHead(200, { 'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream' });
+      res.writeHead(200, {
+        'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream',
+        ...assetHeaders.get(url.pathname),
+      });
       res.end(content);
     })().catch((error: unknown) => {
       res.writeHead(500).end(String(error));

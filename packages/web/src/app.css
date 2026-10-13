@@ -1,8 +1,5 @@
 @import 'tailwindcss';
 
-/* The OAuth consent page is server-rendered HTML that shares this stylesheet. */
-@source '../../server/src/oauth/pages.ts';
-
 @theme {
   --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }

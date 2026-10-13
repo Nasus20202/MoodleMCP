@@ -1,0 +1,4 @@
+# Served by Cloudflare static assets. The OAuth consent screen takes a secret, so it must not be framed.
+/connect
+  Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; frame-ancestors 'none'
+  Referrer-Policy: no-referrer
