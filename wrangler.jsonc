@@ -27,19 +27,14 @@
     "ALLOWED_MOODLE_HOSTS": "*",
     "LOG_LEVEL": "info",
   },
-  // Per-PR preview workers (.github/workflows/preview.yml), deployed with `--env preview --name moodle-mcp-pr-<n>`.
-  // Previews live on workers.dev instead of the production domain.
-  "env": {
-    "preview": {
-      // Explicit: `routes` is inherited from the top level, so omitting it would claim the production domain.
-      "routes": [],
-      "workers_dev": true,
-      "ai": { "binding": "AI" },
-      "vars": {
-        "MOODLE_URL": "https://enauczanie.pg.edu.pl/2025",
-        "ALLOWED_MOODLE_HOSTS": "*",
-        "LOG_LEVEL": "info",
-      },
+  // Per-PR previews (.github/workflows/preview.yml): `wrangler preview --name pr-<n>`. A Preview inherits nothing
+  // from production, so it repeats what it needs. OAUTH_SECRET is set per Preview by the workflow.
+  "previews": {
+    "ai": { "binding": "AI" },
+    "vars": {
+      "MOODLE_URL": "https://enauczanie.pg.edu.pl/2025",
+      "ALLOWED_MOODLE_HOSTS": "*",
+      "LOG_LEVEL": "info",
     },
   },
 }
