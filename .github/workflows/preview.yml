@@ -59,7 +59,7 @@ jobs:
           url=$(grep -E '^https://pr-[0-9]+-' <<< "$urls" | head -n 1 || true)
           [ -n "$url" ] || url=$(grep -E '\.workers\.dev' <<< "$urls" | head -n 1 || true)
           if [ -z "$url" ]; then
-            echo "::error title=No preview URL::wrangler printed no preview URL."
+            echo "::error title=No preview URL::wrangler printed no preview URL. Enable Preview URLs for the worker (dashboard: Settings > Domains & Routes) or deploy it once with preview_urls set."
             exit 1
           fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
