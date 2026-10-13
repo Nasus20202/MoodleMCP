@@ -7,8 +7,8 @@ import { defineCustomTool, jsonContent, type ToolContent } from './define.ts';
 import { ToolName } from './names.ts';
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
-const DEFAULT_CHARS = 30_000;
-const MAX_CHARS = 100_000;
+const DEFAULT_CHARS = 50_000;
+const MAX_CHARS = 1_000_000;
 
 const describeFile = (file: DownloadedFile) => ({
   filename: file.filename,
@@ -59,7 +59,10 @@ export const readFileTool = defineCustomTool({
       .min(1000)
       .max(MAX_CHARS)
       .default(DEFAULT_CHARS)
-      .describe(`most characters to return (default ${DEFAULT_CHARS}, max ${MAX_CHARS})`),
+      .describe(
+        `most characters to return (default ${DEFAULT_CHARS}, max ${MAX_CHARS}); raise it to read a whole ` +
+          'document in one call, e.g. to summarise it',
+      ),
   }),
   async run({ client, logger }, { file_url, offset, page, max_chars, raw }) {
     if (raw) {
