@@ -52,7 +52,7 @@ jobs:
           command: deploy --env preview --name ${{ env.WORKER_NAME }}
         env:
           # Previews get their own secret so a leaked preview cannot mint production tokens.
-          OAUTH_SECRET: ${{ secrets.PREVIEW_OAUTH_SECRET || secrets.OAUTH_SECRET }}
+          OAUTH_SECRET: ${{ secrets.PREVIEW_OAUTH_SECRET }}
 
       # wrangler-action reports custom domains as "host (custom domain)", without a protocol.
       - id: url
