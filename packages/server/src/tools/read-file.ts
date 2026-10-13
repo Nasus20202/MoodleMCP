@@ -1,6 +1,6 @@
 import * as z from 'zod/v4';
 
-import { toMarkdown } from '../files/markdown.ts';
+import { classifyConversionFailure, conversionFailureNote, toMarkdown } from '../files/markdown.ts';
 import { chooseMode, type ModeChoice, ReadMode } from '../files/mode.ts';
 import { MAX_PAGES_PER_CALL } from '../files/pdf.ts';
 import { classify, effectiveType, pageText, readFile, toBase64, unsupportedReason } from '../files/read.ts';
@@ -127,17 +127,17 @@ async function readText(context: ToolContext, args: Input): Promise<ToolContent[
       return textResult(file, args, { format, mode: ReadMode.Markdown, text });
     } catch (error) {
       // Quota spent, an outage, a timeout or a file it cannot handle: our own parsers still have a go.
+      // Only a fixed reason code is logged and returned: Workers AI's message can name the file.
+      const reason = classifyConversionFailure(error);
       logger.warn('markdown conversion failed', {
         format,
         mime: file.mimeType,
         bytes: file.bytes.byteLength,
         ms: Date.now() - started,
+        reason,
         error: error instanceof Error ? error.name : 'unknown',
       });
-      choice = {
-        mode: ReadMode.Extract,
-        note: 'Markdown conversion failed; the text was extracted instead.',
-      };
+      choice = { mode: ReadMode.Extract, note: conversionFailureNote(reason) };
     }
   }
   return extract(context, file, format, args, choice.note);

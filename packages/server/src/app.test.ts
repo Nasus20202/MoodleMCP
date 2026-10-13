@@ -330,9 +330,38 @@ describe('read_file', () => {
       expect(logLines(logs).find((l) => l.msg === 'markdown conversion failed')).toMatchObject({
         level: 'warn',
         format: 'html',
+        reason: 'quota',
         error: 'MarkdownConversionError',
       });
       expect(logs.join('\n')).not.toMatch(/notes\.txt|neuron/);
+    });
+
+    it.each([
+      ['notes.txt: daily neuron limit exceeded', 'quota', 'allowance'],
+      ['notes.txt: Unsupported file type', 'unsupported', 'cannot handle'],
+      ['notes.txt: boom', 'failed', 'extracted instead'],
+    ])(
+      'says why the conversion failed (%s), without the converter message',
+      async (message, reason, hint) => {
+        const markdown = fakeMarkdown(() => new Error(message));
+        const { json, logs } = await readWith(serve('<p>Hello</p>', 'text/html'), {}, markdown);
+        expect(json()).toMatchObject({ mode: 'extract', text: 'Hello' });
+        expect(String(json().note)).toContain(hint);
+        expect(logLines(logs).find((l) => l.msg === 'markdown conversion failed')).toMatchObject({ reason });
+        expect(logs.join('\n')).not.toMatch(/notes\.txt|neuron|boom|Unsupported/);
+        expect(String(json().note)).not.toMatch(/notes\.txt|neuron|boom/);
+      },
+    );
+
+    it('returns the image itself, with a note, when describing it fails', async () => {
+      const markdown = fakeMarkdown(() => new Error('Unsupported file type'));
+      const { body } = await readWith(
+        serve(new Uint8Array([1, 2]), 'image/png'),
+        { mode: 'markdown' },
+        markdown,
+      );
+      expect(body.result?.content?.[0]).toMatchObject({ type: 'image', mimeType: 'image/png' });
+      expect(String(body.result?.content?.at(-1)?.text)).toContain('Markdown conversion failed');
     });
   });
 });

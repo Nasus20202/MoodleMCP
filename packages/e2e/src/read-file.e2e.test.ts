@@ -244,6 +244,7 @@ describe('read_file with Workers AI bound', () => {
     expect(logs.find((l) => l.msg === 'markdown conversion failed')).toMatchObject({
       level: 'warn',
       format: 'pdf',
+      reason: 'quota',
       error: 'MarkdownConversionError',
     });
     expect(await world.worker.rawLogs()).not.toMatch(/slides\.pdf|neurons|pluginfile/);
