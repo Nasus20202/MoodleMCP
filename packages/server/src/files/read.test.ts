@@ -2,7 +2,7 @@ import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 
 import type { DownloadedFile } from '../moodle/client.ts';
-import { classify, pageText, readFile, toBase64 } from './read.ts';
+import { classify, pageText, readFile } from './read.ts';
 import { htmlToText } from './text.ts';
 
 const file = (filename: string, bytes: Uint8Array | string, mimeType = ''): DownloadedFile => ({
@@ -168,18 +168,6 @@ describe('pageText', () => {
       totalChars: 10,
       nextOffset: null,
     });
-  });
-});
-
-describe('toBase64', () => {
-  it('matches a reference encoder across chunk boundaries', () => {
-    const bytes = Uint8Array.from({ length: 0x8000 * 2 + 5 }, (_, i) => (i * 7) % 256);
-    expect(toBase64(bytes)).toBe(btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join('')));
-  });
-
-  it('uses the native encoder when the runtime has one', () => {
-    const bytes = Object.assign(new Uint8Array([1, 2, 3]), { toBase64: () => 'native' });
-    expect(toBase64(bytes)).toBe('native');
   });
 });
 
