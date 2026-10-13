@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 10
     environment:
       name: production
-      url: ${{ steps.deploy.outputs.deployment-url }}
+      url: https://moodlemcp.nasus.dev
     steps:
       - uses: actions/checkout@v7
         with:
