@@ -1,10 +1,10 @@
 import type { ConfigResponse, ErrorResponse, ExchangeResponse, ToolsResponse } from '@moodle-mcp/shared';
 import { describe, expect, it } from 'vitest';
 
-import { createApp } from './app.ts';
+import { type AppDeps, createApp } from './app.ts';
 import { tokenFingerprint } from './http/client-info.ts';
 import { createLogger } from './logger.ts';
-import { fakeMoodle, type RecordedCall, TEST_SITE, testConfig } from './test-utils.ts';
+import { fakeMarkdown, fakeMoodle, type RecordedCall, TEST_SITE, testConfig } from './test-utils.ts';
 import { ToolName } from './tools/names.ts';
 
 const MCP_HEADERS = {
@@ -21,11 +21,15 @@ interface RpcResponse {
   error?: { message: string };
 }
 
-function setup(respond: (call: RecordedCall) => unknown = () => ({}), config = testConfig()) {
+function setup(
+  respond: (call: RecordedCall) => unknown = () => ({}),
+  config = testConfig(),
+  deps: Pick<AppDeps, 'markdown'> = {},
+) {
   const moodle = fakeMoodle(respond);
   const logs: string[] = [];
   const logger = createLogger('debug', (_l, line) => logs.push(line));
-  const app = createApp(config, { fetch: moodle.fetch, logger });
+  const app = createApp(config, { fetch: moodle.fetch, logger, ...deps });
   return { app, moodle, logs };
 }
 
@@ -118,9 +122,9 @@ describe('read_file', () => {
     expect(json().note).toContain('video/mp4');
   });
 
-  it('returns the whole file as base64 when raw is set, whatever its type', async () => {
+  it('returns the whole file as base64 in raw mode, whatever its type', async () => {
     const bytes = new Uint8Array([1, 2, 3]);
-    const { body, moodle } = await readFile(serve(bytes, 'video/mp4'), { raw: true });
+    const { body, moodle } = await readFile(serve(bytes, 'video/mp4'), { mode: 'raw' });
     const [resource, info] = body.result?.content ?? [];
     expect(resource).toEqual({
       type: 'resource',
@@ -131,7 +135,7 @@ describe('read_file', () => {
   });
 
   it('limits raw files to 20 MB', async () => {
-    const { body } = await readFile(serve(new Uint8Array(21 * 1024 * 1024)), { raw: true });
+    const { body } = await readFile(serve(new Uint8Array(21 * 1024 * 1024)), { mode: 'raw' });
     expect(body.result?.isError).toBe(true);
     expect(body.result?.content?.[0]?.text).toContain('too large');
   });
@@ -203,6 +207,120 @@ describe('read_file', () => {
     const { logs } = await readFile(serve('hello'));
     expect(logs.length).toBeGreaterThan(0);
     expect(logs.join('\n')).not.toMatch(/user-token|notes\.txt|pluginfile/);
+  });
+
+  describe('markdown mode', () => {
+    const readWith = async (
+      respond: (call: RecordedCall) => unknown,
+      args: Record<string, unknown> = {},
+      markdown = fakeMarkdown(),
+    ) => {
+      const { app, logs } = setup(respond, testConfig(), { markdown: markdown.converter });
+      const { body } = await callTool(app, ToolName.ReadFile, { file_url: FILE, ...args });
+      const text = body.result?.content?.at(-1)?.text ?? '';
+      return { body, logs, calls: markdown.calls, json: () => JSON.parse(text) as Record<string, unknown> };
+    };
+
+    it.each([
+      ['application/pdf', 'pdf'],
+      ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'docx'],
+      ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'xlsx'],
+      ['text/html', 'html'],
+    ])('converts %s by default, without converting embedded images', async (type, format) => {
+      const { json, calls } = await readWith(serve('file body', type));
+      expect(json()).toMatchObject({ format, mode: 'markdown', text: '# notes.txt', next_offset: null });
+      expect(calls).toEqual([
+        {
+          name: 'notes.txt',
+          type,
+          text: 'file body',
+          options: {
+            conversionOptions: {
+              pdf: { metadata: false, images: { convert: false } },
+              docx: { images: { convert: false } },
+              html: { images: { convert: false, convertOGImage: false } },
+            },
+          },
+        },
+      ]);
+    });
+
+    it('uses the type from the extension when Moodle says octet-stream', async () => {
+      const file = `${TEST_SITE}/webservice/pluginfile.php/1/mod_resource/content/1/slides.pdf`;
+      const { json, calls } = await readWith(serve('x', 'application/octet-stream'), { file_url: file });
+      expect(json()).toMatchObject({ mode: 'markdown' });
+      expect(calls[0]).toMatchObject({ name: 'slides.pdf', type: 'application/pdf' });
+    });
+
+    it('pages through long Markdown by characters', async () => {
+      const markdown = fakeMarkdown(() => 'm'.repeat(2500));
+      const { json } = await readWith(
+        serve('x', 'application/pdf'),
+        { offset: 1000, max_chars: 1000 },
+        markdown,
+      );
+      expect(json()).toMatchObject({
+        total_chars: 2500,
+        offset: 1000,
+        next_offset: 2000,
+        text: 'm'.repeat(1000),
+      });
+    });
+
+    it('keeps extracting images, presentations and plain text unless markdown is asked for', async () => {
+      const image = await readWith(serve(new Uint8Array([137, 80, 78, 71]), 'image/png'));
+      expect(image.body.result?.content?.[0]).toMatchObject({ type: 'image' });
+      const text = await readWith(serve('plain words'));
+      expect(text.json()).toMatchObject({ mode: 'extract', text: 'plain words' });
+      expect([...image.calls, ...text.calls]).toEqual([]);
+    });
+
+    it('describes an image when markdown is asked for', async () => {
+      const markdown = fakeMarkdown(() => 'A diagram of a binary tree.');
+      const { json, calls } = await readWith(
+        serve(new Uint8Array([1, 2]), 'image/png'),
+        { mode: 'markdown' },
+        markdown,
+      );
+      expect(json()).toMatchObject({
+        format: 'image',
+        mode: 'markdown',
+        text: 'A diagram of a binary tree.',
+      });
+      expect(calls).toHaveLength(1);
+    });
+
+    it('extracts PDFs when asked to, or when a page is given', async () => {
+      const extracted = await readWith(serve('not a pdf', 'application/pdf'), { mode: 'extract' });
+      const paged = await readWith(serve('not a pdf', 'application/pdf'), { page: 2 });
+      expect([...extracted.calls, ...paged.calls]).toEqual([]);
+    });
+
+    it('extracts with a note when markdown is asked for a type it cannot convert', async () => {
+      const { json, calls } = await readWith(serve('plain words'), { mode: 'markdown' });
+      expect(json()).toMatchObject({ mode: 'extract', text: 'plain words' });
+      expect(String(json().note)).toContain('does not support this file type');
+      expect(calls).toEqual([]);
+    });
+
+    it('extracts with a note when markdown is asked for but not set up', async () => {
+      const { json } = await readFile(serve('<p>Hi</p>', 'text/html'), { mode: 'markdown' });
+      expect(json()).toMatchObject({ mode: 'extract', text: 'Hi' });
+      expect(String(json().note)).toContain('not set up');
+    });
+
+    it('falls back to extraction when the conversion fails, logging no details of the file', async () => {
+      const markdown = fakeMarkdown(() => new Error('notes.txt: daily neuron limit exceeded'));
+      const { json, logs } = await readWith(serve('<p>Hello</p>', 'text/html'), {}, markdown);
+      expect(json()).toMatchObject({ mode: 'extract', text: 'Hello' });
+      expect(String(json().note)).toContain('Markdown conversion failed');
+      expect(logLines(logs).find((l) => l.msg === 'markdown conversion failed')).toMatchObject({
+        level: 'warn',
+        format: 'html',
+        error: 'MarkdownConversionError',
+      });
+      expect(logs.join('\n')).not.toMatch(/notes\.txt|neuron/);
+    });
   });
 });
 

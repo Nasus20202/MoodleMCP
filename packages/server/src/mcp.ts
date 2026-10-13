@@ -1,6 +1,7 @@
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 
+import type { MarkdownConverter } from './files/markdown.ts';
 import type { LogFields, Logger } from './logger.ts';
 import { MoodleClient } from './moodle/client.ts';
 import { registerTools } from './tools/register.ts';
@@ -36,7 +37,13 @@ const SERVER_INSTRUCTIONS = [
  * The stateless MCP endpoint. A fresh server is built for every request, bound to that request's
  * caller, so nothing is shared between users and nothing is stored.
  */
-export function createMcpEndpoint(deps: { fetch: typeof fetch; logger: Logger }): McpEndpoint {
+export interface McpEndpointDeps {
+  fetch: typeof fetch;
+  logger: Logger;
+  markdown?: MarkdownConverter;
+}
+
+export function createMcpEndpoint(deps: McpEndpointDeps): McpEndpoint {
   const handler = createMcpHandler(({ authInfo }) => {
     const extra = callerExtra.safeParse(authInfo?.extra);
     if (!(authInfo && extra.success)) throw new Error('MCP request reached the handler without credentials');
@@ -52,7 +59,7 @@ export function createMcpEndpoint(deps: { fetch: typeof fetch; logger: Logger })
       { name: SERVER_NAME, version: SERVER_VERSION },
       { instructions: SERVER_INSTRUCTIONS },
     );
-    registerTools(server, client, logger);
+    registerTools(server, { client, logger, ...(deps.markdown && { markdown: deps.markdown }) });
     return server;
   });
 

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "cd ../.. && wrangler dev",
+    "dev": "cd ../.. && wrangler dev --local",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

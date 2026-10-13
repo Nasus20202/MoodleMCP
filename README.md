@@ -44,10 +44,21 @@ tool to call next and where its ids come from.
 | Activity  | `get_notifications`                                                                                         |
 
 `read_file` takes a `fileurl` from another tool and returns text for PDF (text layer only), DOCX, PPTX, XLSX, HTML and
-plain text; images come back as images. Other types are reported as unreadable unless `raw: true` returns the file as
-base64. Files up to 20 MB, paged with `offset` and `next_offset`; PDFs are extracted only as far as each call reads (at
-most 20 pages) and also take a `page` to continue from (`next_page`). The URL must be on the Moodle site; redirects are not
-followed.
+plain text; images come back as images. Files up to 20 MB, paged with `offset` and `next_offset`. The URL must be on
+the Moodle site; redirects are not followed. Its `mode` picks how a file is read:
+
+| Mode       | What it does                                                                                                 |
+| ---------- | ------------------------------------------------------------------------------------------------------------ |
+| `auto`     | default: `markdown` for PDF, DOCX, XLSX and HTML when the AI binding is there, `extract` for everything else |
+| `markdown` | Workers AI [`toMarkdown`][tomarkdown]: no Worker CPU, keeps headings and tables; an image gets a description |
+| `extract`  | the Worker's own parsers; PDFs are read only as far as each call goes (at most 20 pages) and take a `page`   |
+| `raw`      | the unmodified file as base64, any type                                                                      |
+
+If a conversion fails (or the daily Workers AI allowance runs out), `read_file` falls back to `extract` and says so.
+Images are only described when `markdown` is asked for, because a description is a summary and uses the allowance;
+images inside documents are never converted. With `markdown`, files are sent to Workers AI for conversion.
+
+[tomarkdown]: https://developers.cloudflare.com/workers-ai/features/markdown-conversion/
 
 ## Configuration
 
@@ -90,7 +101,7 @@ Needs Node 26.11 or newer (see `.node-version`) and [pnpm](https://pnpm.io) (`co
 
 ```sh
 pnpm install
-pnpm dev            # Worker on :8787 + Vite on :5173; open :5173
+pnpm dev            # Worker on :8787 + Vite on :5173; open :5173 (no Workers AI: read_file extracts)
 pnpm check          # ESLint, Prettier, typecheck, tests (including the end-to-end tests)
 pnpm test:browser   # Playwright tests of the setup and OAuth pages
 pnpm format         # fix what can be fixed

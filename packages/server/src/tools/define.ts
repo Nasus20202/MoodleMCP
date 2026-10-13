@@ -1,5 +1,6 @@
 import type * as z from 'zod/v4';
 
+import type { MarkdownConverter } from '../files/markdown.ts';
 import type { Logger } from '../logger.ts';
 import type { MoodleClient, Params } from '../moodle/client.ts';
 import type { MoodleFunction } from '../moodle/functions.ts';
@@ -17,6 +18,8 @@ export const jsonContent = (data: unknown): ToolContent[] => [{ type: 'text', te
 export interface ToolContext {
   client: MoodleClient;
   logger: Logger;
+  /** Workers AI's document converter, when the binding is configured. */
+  markdown?: MarkdownConverter;
 }
 
 /** A read-only tool: validated input in, content blocks out (raw Moodle JSON for most tools). */

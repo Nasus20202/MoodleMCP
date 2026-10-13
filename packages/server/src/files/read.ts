@@ -88,7 +88,7 @@ export type FileReading =
 const extensionOf = (filename: string) => /\.([a-z0-9]+)$/i.exec(filename)?.[1]?.toLowerCase() ?? '';
 
 /** Prefers the extension when the server only says "octet-stream", which Moodle does for many files. */
-function effectiveType({ mimeType, filename }: Pick<DownloadedFile, 'mimeType' | 'filename'>): string {
+export function effectiveType({ mimeType, filename }: Pick<DownloadedFile, 'mimeType' | 'filename'>): string {
   const generic =
     mimeType === '' || mimeType === 'application/octet-stream' || mimeType === 'application/force-download';
   return generic ? (MIME_BY_EXTENSION[extensionOf(filename)] ?? mimeType) : mimeType;
@@ -96,7 +96,7 @@ function effectiveType({ mimeType, filename }: Pick<DownloadedFile, 'mimeType' |
 
 const decodeUtf8 = (bytes: Uint8Array) => new TextDecoder('utf-8').decode(bytes);
 
-type Kind = 'pdf' | 'docx' | 'pptx' | 'xlsx' | 'html' | 'image' | 'text';
+export type Kind = 'pdf' | 'docx' | 'pptx' | 'xlsx' | 'html' | 'image' | 'text';
 
 /** What we can do with a file, judged from its metadata alone (so unreadable files are never downloaded). */
 export function classify(meta: Pick<DownloadedFile, 'mimeType' | 'filename'>): Kind | null {

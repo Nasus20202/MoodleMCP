@@ -48,7 +48,14 @@ describe('read_file against a mock Moodle file server', () => {
 
   it('extracts the text layer of a PDF', async () => {
     const { json } = await read(FILE_URLS.slides);
-    expect(json()).toMatchObject({ filename: 'slides.pdf', pages: 1, next_page: null, next_offset: null });
+    // No AI binding here, as under `wrangler dev --local`, so auto mode extracts the text itself.
+    expect(json()).toMatchObject({
+      filename: 'slides.pdf',
+      mode: 'extract',
+      pages: 1,
+      next_page: null,
+      next_offset: null,
+    });
     expect(json().text).toBe('--- Page 1 ---\nLecture one slides');
   });
 
@@ -100,8 +107,8 @@ describe('read_file against a mock Moodle file server', () => {
     expect(json().note).toContain('video/mp4');
   });
 
-  it('returns the unmodified file when raw is set, whatever its type', async () => {
-    const { result } = await read(fileUrl('lecture.mp4', 305), { raw: true });
+  it('returns the unmodified file in raw mode, whatever its type', async () => {
+    const { result } = await read(fileUrl('lecture.mp4', 305), { mode: 'raw' });
     expect(result.content[0]?.resource).toEqual({
       uri: 'moodle-file:///lecture.mp4',
       mimeType: 'video/mp4',
@@ -114,7 +121,7 @@ describe('read_file against a mock Moodle file server', () => {
   });
 
   it('refuses raw files over 20 MB', async () => {
-    const { result } = await read(fileUrl('huge.bin', 307), { raw: true });
+    const { result } = await read(fileUrl('huge.bin', 307), { mode: 'raw' });
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain('too large');
   });

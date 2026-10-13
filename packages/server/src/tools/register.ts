@@ -1,7 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 
-import type { Logger } from '../logger.ts';
-import type { MoodleClient } from '../moodle/client.ts';
 import { MoodleError, MoodleTransportError } from '../moodle/errors.ts';
 import type { ToolContext, ToolDefinition } from './define.ts';
 import { TOOLS } from './definitions.ts';
@@ -16,13 +14,13 @@ const ANNOTATIONS = {
   openWorldHint: false,
 };
 
-/** Registers every tool on `server`; each call acts on behalf of `client`'s token owner. */
-export function registerTools(server: McpServer, client: MoodleClient, logger: Logger): void {
+/** Registers every tool on `server`; each call acts on behalf of `context.client`'s token owner. */
+export function registerTools(server: McpServer, context: ToolContext): void {
   for (const tool of TOOLS) {
     server.registerTool(
       tool.name,
       { description: tool.description, inputSchema: tool.input, annotations: ANNOTATIONS },
-      (args) => runTool(tool, { client, logger }, args),
+      (args) => runTool(tool, context, args),
     );
   }
 }

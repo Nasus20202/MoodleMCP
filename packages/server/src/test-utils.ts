@@ -1,4 +1,5 @@
 import type { AppConfig } from './config.ts';
+import type { MarkdownConverter } from './files/markdown.ts';
 
 /** A call the fake Moodle received. */
 export interface RecordedCall {
@@ -41,3 +42,34 @@ export const testConfig = (overrides: Partial<AppConfig> = {}): AppConfig => ({
   logLevel: 'error',
   ...overrides,
 });
+
+/** A file `toMarkdown` was asked to convert, and the options it was given. */
+export interface ConversionCall {
+  name: string;
+  type: string;
+  text: string;
+  options: ConversionRequestOptions | undefined;
+}
+
+/**
+ * A stand-in for Workers AI's `toMarkdown`. `respond` maps a file to its Markdown, or to an Error to report a
+ * failed conversion the way Workers AI does (a result with format "error").
+ */
+export function fakeMarkdown(respond: (call: ConversionCall) => string | Error = (c) => `# ${c.name}`): {
+  converter: MarkdownConverter;
+  calls: ConversionCall[];
+} {
+  const calls: ConversionCall[] = [];
+  const converter: MarkdownConverter = {
+    async toMarkdown(file, options) {
+      const call = { name: file.name, type: file.blob.type, text: await file.blob.text(), options };
+      calls.push(call);
+      const out = respond(call);
+      const common = { id: '1', name: file.name, mimeType: file.blob.type };
+      return out instanceof Error
+        ? { ...common, format: 'error', error: out.message }
+        : { ...common, format: 'markdown', tokens: 0, data: out };
+    },
+  };
+  return { converter, calls };
+}

@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 
 import type { AppConfig } from './config.ts';
+import type { MarkdownConverter } from './files/markdown.ts';
 import { clientInfo } from './http/client-info.ts';
 import type { AppEnv } from './http/context.ts';
 import { errorHandler, jsonError } from './http/errors.ts';
@@ -17,6 +18,8 @@ export interface AppDeps {
   /** Outbound HTTP; replaced in tests. */
   fetch?: typeof fetch;
   logger?: Logger;
+  /** Workers AI's `toMarkdown`, from the AI binding; without it read_file always extracts text itself. */
+  markdown?: MarkdownConverter;
 }
 
 /** Builds the HTTP app: the MCP endpoint at /mcp and the setup page's API under /api. */
@@ -29,7 +32,14 @@ export function createApp(config: AppConfig, deps: AppDeps = {}): Hono<AppEnv> {
   const app = new Hono<AppEnv>()
     .use(clientInfo())
     .use(requestLogger(logger))
-    .route('/', mcpRoutes(createMcpEndpoint({ fetch: fetchImpl, logger }), policy, sealer))
+    .route(
+      '/',
+      mcpRoutes(
+        createMcpEndpoint({ fetch: fetchImpl, logger, ...(deps.markdown && { markdown: deps.markdown }) }),
+        policy,
+        sealer,
+      ),
+    )
     .route('/', apiRoutes({ policy, fetch: fetchImpl, oauth: sealer !== undefined }));
   if (sealer) app.route('/', oauthRoutes({ sealer, policy, fetch: fetchImpl, logger }));
   return app.notFound((c) => c.json(jsonError('Not found'), 404)).onError(errorHandler(logger));
