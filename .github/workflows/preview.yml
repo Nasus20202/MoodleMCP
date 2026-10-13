@@ -7,7 +7,7 @@ on:
 permissions:
   contents: read
 
-# One preview per PR; a newer push supersedes a running upload, but the close job is never cancelled by one.
+# One preview per PR; a newer push supersedes a running deploy, but cleanup is never cancelled by a deploy.
 concurrency:
   group: preview-${{ github.event.pull_request.number }}
   cancel-in-progress: false
@@ -24,7 +24,7 @@ jobs:
       pull-requests: write
     environment:
       name: preview-pr-${{ github.event.pull_request.number }}
-      url: ${{ steps.url.outputs.url }}
+      url: ${{ steps.preview.outputs.url }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -39,61 +39,72 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # A Cloudflare preview URL: a version of the production worker that is uploaded but not deployed, served at
-      # pr-<n>-<worker>.<subdomain>.workers.dev. It runs with the production worker's secrets and bindings.
-      - id: upload
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          packageManager: pnpm
-          command: versions upload --preview-alias pr-${{ github.event.pull_request.number }}
-
-      # `versions upload` leaves the action's deployment-url output empty, so take the alias URL ("Version Preview
-      # Alias URL") from wrangler's output, or the per-version one when no alias was printed.
-      - id: url
-        env:
-          OUTPUT: ${{ steps.upload.outputs.command-output }}
+      # A Cloudflare Worker Preview: its own deployment of this worker, with the settings of the `previews` block in
+      # wrangler.jsonc and the secrets of the Previews Base configuration (not production's).
+      - id: preview
         run: |
-          urls=$(grep -oE 'https://[^[:space:]]+' <<< "$OUTPUT" || true)
-          url=$(grep -E '^https://pr-[0-9]+-' <<< "$urls" | head -n 1 || true)
-          [ -n "$url" ] || url=$(grep -E '\.workers\.dev' <<< "$urls" | head -n 1 || true)
-          if [ -z "$url" ]; then
-            echo "::error title=No preview URL::wrangler printed no preview URL. Enable Preview URLs for the worker (dashboard: Settings > Domains & Routes) or deploy it once with preview_urls set."
-            exit 1
-          fi
+          set -o pipefail
+          output="$(pnpm exec wrangler preview --name "pr-$PR" --json)"
+          url="$(jq -er '.preview.urls[0]' <<< "$output")"
           echo "url=$url" >> "$GITHUB_OUTPUT"
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Comment preview URL
         env:
           GH_TOKEN: ${{ github.token }}
-          URL: ${{ steps.url.outputs.url }}
+          URL: ${{ steps.preview.outputs.url }}
           SHA: ${{ github.event.pull_request.head.sha }}
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
           gh pr comment "$PR" --repo "$REPO" --edit-last --create-if-none --body "Preview deployed: $URL
 
-          Commit: \`${SHA::7}\`. It uses the production secrets and bindings."
+          Commit: \`${SHA::7}\`. It is deleted when this PR is closed."
 
-  # Uploaded versions cost nothing and cannot be deleted per PR, so there is no worker to remove; the alias keeps
-  # working. What can be done is marking the deployments inactive, so the closed PR's preview stops showing as live.
-  # (The environment itself cannot be deleted with GITHUB_TOKEN, which has no `administration` permission.)
-  close:
-    name: Deactivate preview deployments
+  cleanup:
+    name: Delete preview
     if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
+      pull-requests: write
       deployments: write
     steps:
-      - name: Deactivate deployments
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm exec wrangler preview delete --name "pr-$PR" --skip-confirmation
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # The environment itself cannot be deleted from here: that needs repository Administration (write), and
+      # GITHUB_TOKEN has no `administration` permission (the old DELETE answered 403 and `|| true` hid it). What
+      # `deployments: write` does allow is marking the deployments inactive, so the closed PR's preview stops
+      # showing as live. The empty `preview-pr-N` entry stays in Settings > Environments.
+      - name: Update comment and deactivate deployments
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
+          gh pr comment "$PR" --repo "$REPO" --edit-last --body "Preview deleted (PR closed)." || true
+
           environment="preview-pr-$PR"
           if ! ids=$(gh api --paginate "repos/$REPO/deployments?environment=$environment" --jq '.[].id'); then
             echo "::warning title=Deployments not deactivated::Could not list the deployments of $environment."

@@ -27,8 +27,15 @@
     "ALLOWED_MOODLE_HOSTS": "*",
     "LOG_LEVEL": "info",
   },
-  // Per-PR previews (.github/workflows/preview.yml) are Cloudflare preview URLs: `wrangler versions upload
-  // --preview-alias pr-<n>` serves a version of this worker at pr-<n>-moodle-mcp.<subdomain>.workers.dev.
-  // Set explicitly because it would otherwise follow `workers_dev`, which stays off for production.
-  "preview_urls": true,
+  // Per-PR previews (.github/workflows/preview.yml): `wrangler preview --name pr-<n>`. A Preview inherits nothing
+  // from production, so it repeats what it needs. OAUTH_SECRET comes from the Previews Base configuration:
+  // `wrangler preview base-config secret put OAUTH_SECRET`.
+  "previews": {
+    "ai": { "binding": "AI" },
+    "vars": {
+      "MOODLE_URL": "https://enauczanie.pg.edu.pl/2025",
+      "ALLOWED_MOODLE_HOSTS": "*",
+      "LOG_LEVEL": "info",
+    },
+  },
 }
