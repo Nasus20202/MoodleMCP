@@ -105,11 +105,31 @@ jobs:
           packageManager: pnpm
           command: delete --name ${{ env.WORKER_NAME }} --force
 
+      # Deleting an environment needs repository Administration (write), which GITHUB_TOKEN cannot be given (it has
+      # no `administration` permission), so the DELETE always answered 403 and `|| true` hid it. That call uses
+      # ENVIRONMENT_CLEANUP_TOKEN instead: a fine-grained token limited to this repository with Administration
+      # (write). Without it the deployments are only marked inactive, and the run says why the environment stays.
       - name: Update comment and deployment environment
         env:
           GH_TOKEN: ${{ github.token }}
+          CLEANUP_TOKEN: ${{ secrets.ENVIRONMENT_CLEANUP_TOKEN }}
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
           gh pr comment "$PR" --repo "$REPO" --edit-last --body "Preview deleted (PR closed)." || true
-          gh api -X DELETE "repos/$REPO/environments/preview-pr-$PR" || true
+
+          environment="preview-pr-$PR"
+          if [ -n "$CLEANUP_TOKEN" ]; then
+            if GH_TOKEN="$CLEANUP_TOKEN" gh api -X DELETE "repos/$REPO/environments/$environment"; then
+              echo "Deleted environment $environment"
+              exit 0
+            fi
+            echo "::warning title=Environment not deleted::ENVIRONMENT_CLEANUP_TOKEN was rejected for $environment. It needs Administration (write) on this repository."
+          else
+            echo "::warning title=Environment not deleted::GITHUB_TOKEN cannot delete $environment. Add the ENVIRONMENT_CLEANUP_TOKEN secret (fine-grained token, Administration: write on this repository) to have it deleted."
+          fi
+
+          # Best effort without the token: mark the deployments inactive so the environment stops showing as live.
+          for id in $(gh api --paginate "repos/$REPO/deployments?environment=$environment" --jq '.[].id'); do
+            gh api -X POST "repos/$REPO/deployments/$id/statuses" -f state=inactive --silent || true
+          done
