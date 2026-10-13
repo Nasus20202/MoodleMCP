@@ -12,6 +12,10 @@ pnpm workspaces, TypeScript throughout (Node and pnpm versions are pinned in `.n
 - `packages/server`: the Worker. Entry `src/worker.ts`; Hono app in `app.ts`; MCP endpoint `mcp.ts`; `moodle/` client and
   function allow-list; `tools/`; `oauth/` and `routes/oauth.ts`.
 - `packages/web`: Svelte 5 + Tailwind 4, built by Vite into `packages/web/dist` and served as static assets.
+- `packages/e2e`: end-to-end tests. They run the bundled Worker in workerd (Miniflare) with the outbound network replaced
+  by a mock Moodle (`src/mock/`); `src/worker.ts` boots it, `src/world.ts` is the per-suite setup. Browser tests
+  (Playwright, `src/browser/*.spec.ts`, run with `pnpm test:browser`) drive the built setup page and the OAuth
+  consent page against the same stack.
 - `wrangler.jsonc`: `/mcp`, `/api/*`, `/oauth/*` and `/.well-known/*` run the Worker first; everything else is an asset.
 
 ## Commands
@@ -53,6 +57,8 @@ pnpm run deploy  # not `pnpm deploy`, which is a different built-in command
 2. Add the Moodle function to `MoodleFunction` if it is not there yet.
 3. Add a `defineTool({...})` entry in `tools/definitions.ts` (zod input schema, function, params mapping).
 4. Add a row to the `it.each` table in `app.test.ts`. The web page and `/api/tools` pick the tool up automatically.
+5. Teach the mock Moodle the function (`packages/e2e/src/mock/moodle.ts`, with fixtures in `data.ts`) and add a row to
+   `CASES` in `packages/e2e/src/tools.e2e.test.ts`; that suite fails if a tool has no row.
 
 Write the description for the model: say what the tool returns, when to prefer a sibling tool, and which tool an id
 argument comes from (`describe()` on the argument repeats it). A tool that is not a plain relay of one Moodle function
@@ -68,6 +74,9 @@ argument comes from (`describe()` on the argument repeats it). A tool that is no
   error; the logger is the one place that may use the console.
 - Keep Svelte components thin: logic goes in `packages/web/src/lib` (or `shared`) where it is unit tested.
 - Tests sit next to the code (`*.test.ts`). Use `fakeMoodle` from `server/src/test-utils.ts` instead of the network.
+  Behaviour that crosses the HTTP boundary (auth headers, OAuth, the real Worker runtime) is tested in `packages/e2e`
+  against the mock Moodle; keep the mock faithful to Moodle (real error codes, enrolment checks, HTTP 200 with an
+  exception body) rather than making it echo whatever the Worker sends.
 - Commits follow [Conventional Commits](https://www.conventionalcommits.org): `type(scope): summary`, imperative,
   lowercase. Types: `feat`, `fix`, `docs`, `refactor`, `test`, `perf`, `build`, `ci`, `chore`; mark breaking changes with
   `!` and a `BREAKING CHANGE:` footer. One logical change per commit.

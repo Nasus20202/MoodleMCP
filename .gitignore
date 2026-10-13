@@ -3,3 +3,5 @@ node_modules
 .dev.vars
 dist
 *.tsbuildinfo
+test-results
+playwright-report

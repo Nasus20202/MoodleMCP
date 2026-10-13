@@ -18,6 +18,7 @@
     "types": "wrangler types --env-interface Env packages/server/worker-configuration.d.ts",
     "typecheck": "pnpm --recursive --if-present typecheck",
     "test": "vitest run",
+    "test:browser": "pnpm --filter @moodle-mcp/e2e test:browser",
     "lint": "eslint . && prettier --check .",
     "format": "eslint --fix . && prettier --write .",
     "check": "pnpm lint && pnpm typecheck && pnpm test"
