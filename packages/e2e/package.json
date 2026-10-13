@@ -10,7 +10,7 @@
   },
   "devDependencies": {
     "@playwright/test": "1.64.0",
-    "@types/node": "24.10.1",
+    "@types/node": "24.19.2",
     "@types/qrcode": "1.5.6",
     "fflate": "0.8.3",
     "miniflare": "5.20261006.1-alpha",
