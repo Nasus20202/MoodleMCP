@@ -48,17 +48,13 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           packageManager: pnpm
+          # Passed to the deploy as `--var`, so it lands on this PR's worker. (The action's `secrets:` input
+          # ignores `--name` and would write to the production worker.) It is a plain variable, not a secret.
+          vars: OAUTH_SECRET
           command: deploy --env preview --name ${{ env.WORKER_NAME }}
-
-      # Not wrangler-action's `secrets:` input: it uploads before the deploy and ignores the `--name` of the
-      # command, so the secret would land on the production worker (`moodle-mcp`) and not on the preview.
-      # Previews get their own secret so a leaked preview cannot mint production tokens.
-      - name: Set the preview's OAuth secret
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Previews get their own secret so a leaked preview cannot mint production tokens.
           OAUTH_SECRET: ${{ secrets.PREVIEW_OAUTH_SECRET }}
-        run: printf '%s' "$OAUTH_SECRET" | pnpm exec wrangler secret put OAUTH_SECRET --name "$WORKER_NAME"
 
       # wrangler-action reports custom domains as "host (custom domain)", without a protocol.
       - id: url
