@@ -26,6 +26,7 @@ export default defineConfig(
         project: [
           './packages/shared/tsconfig.json',
           './packages/server/tsconfig.json',
+          './packages/e2e/tsconfig.json',
           './packages/web/tsconfig.json',
         ],
         tsconfigRootDir: import.meta.dirname,

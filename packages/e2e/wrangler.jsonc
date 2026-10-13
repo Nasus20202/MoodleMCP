@@ -1,0 +1,7 @@
+{
+  // Only used to bundle the Worker for the E2E tests (see src/global-setup.ts); same entry and flags as the root config.
+  "name": "moodle-mcp-e2e",
+  "main": "../server/src/worker.ts",
+  "compatibility_date": "2026-10-12",
+  "compatibility_flags": ["nodejs_compat"],
+}

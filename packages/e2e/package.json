@@ -1,0 +1,22 @@
+{
+  "name": "@moodle-mcp/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:browser": "playwright test",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@types/node": "24.10.1",
+    "@types/qrcode": "1.5.6",
+    "fflate": "0.8.3",
+    "miniflare": "5.20261006.1-alpha",
+    "qrcode": "1.5.4"
+  },
+  "dependencies": {
+    "@moodle-mcp/shared": "workspace:*"
+  }
+}

@@ -1,65 +1,36 @@
 # moodle-mcp
 
-Read-only MCP server for Moodle, running on Cloudflare Workers (TypeScript, Hono, the official MCP SDK). It is
-stateless: each request carries the user's own Moodle mobile token, and nothing is stored.
+A read-only [MCP](https://modelcontextprotocol.io) server for Moodle, running on Cloudflare Workers. It is stateless:
+every request carries the user's own Moodle mobile token, and nothing is stored.
 
-It defaults to [eNauczanie PG](https://enauczanie.pg.edu.pl/2025) but works with any Moodle site that has the mobile web
-service enabled. The page served at `/` explains how to get a token and how to connect an agent.
-
-## What it serves
-
-| Path                                         | Purpose                                                              |
-| -------------------------------------------- | -------------------------------------------------------------------- |
-| `/`                                          | setup page (Svelte), served as static assets                         |
-| `/mcp`                                       | the MCP endpoint (Streamable HTTP, stateless)                        |
-| `/api/config`, `/api/tools`, `/api/exchange` | JSON API behind the setup page (default site, tool list, QR → token) |
-| `/oauth/*`, `/.well-known/oauth-*`           | OAuth provider; only when `OAUTH_SECRET` is set                      |
+It defaults to [eNauczanie PG](https://enauczanie.pg.edu.pl/2025) but works with any Moodle site that has the mobile
+web service enabled. The setup page served at `/` explains how to get a token and connect an agent.
 
 ## Connect an agent
 
-There are two ways to authenticate. Both end up using the same Moodle token.
+Add a remote MCP server (Streamable HTTP) at `https://<your-host>/mcp`, and authenticate in one of two ways. Both end up
+using the same Moodle token.
 
-### With a header
-
-Add a remote MCP server at `https://<your-host>/mcp` with these headers:
-
-| Header                          | Required | Meaning                                                      |
-| ------------------------------- | -------- | ------------------------------------------------------------ |
-| `Authorization: Bearer <token>` | yes      | the user's Moodle mobile token (`X-Moodle-Token` also works) |
-| `X-Moodle-URL`                  | no       | Moodle site to use; defaults to `MOODLE_URL`                 |
+**Header.** Send `Authorization: Bearer <token>` (or `X-Moodle-Token: <token>`). To use a site other than the default,
+also send `X-Moodle-URL: https://<moodle-site>`.
 
 ```sh
 claude mcp add --transport http moodle https://<your-host>/mcp --header "Authorization: Bearer <token>"
 ```
 
-### With OAuth
+**OAuth**, for clients that cannot send headers (ChatGPT, claude.ai connectors). Add just the URL. The client opens a
+page on this server where you paste your Moodle token and site; the client then receives an encrypted access token that
+carries it. Needs `OAUTH_SECRET` (see [Configuration](#configuration)); without it the OAuth routes are off. Use dynamic
+client registration, or leave the client ID and secret empty.
 
-For clients that cannot send a custom header (ChatGPT, claude.ai connectors), add just `https://<your-host>/mcp`. The
-client discovers the OAuth endpoints, opens a page on this server, and you paste your Moodle token and site there. The
-token is checked against Moodle, and the client receives an encrypted access token that carries it. This needs the
-`OAUTH_SECRET` secret; without it the OAuth routes are off. Use automatic (dynamic) client registration, or leave the client
-ID and secret empty: the server registers clients itself and needs no secret from them.
-
-Config examples: for Claude Code, `claude mcp add --transport http moodle https://<your-host>/mcp`, then run `/mcp` and
-choose "Authenticate". Generic JSON, with no credentials in it:
-
-```json
-{ "mcpServers": { "moodle": { "type": "http", "url": "https://<your-host>/mcp" } } }
-```
-
-OpenCode (`opencode.json`: `{"mcp":{"moodle":{"type":"remote","url":"https://<your-host>/mcp"}}}`, then
-`opencode mcp auth moodle`) and Codex (`codex mcp add moodle --url https://<your-host>/mcp`) work the same way. The
-setup page shows file and command examples for each.
-
-### Getting a Moodle token
-
-Follow step 1 on the setup page: sign in with your university account, or drop a screenshot of Moodle's mobile-app QR
-code if your site has QR login enabled.
+**Getting a token:** follow step 1 on the setup page. Sign in with your university account, or drop a screenshot of
+Moodle's mobile-app QR code if your site has QR login enabled. The setup page also has config snippets for common
+clients.
 
 ## Tools
 
-All read-only. `GET /api/tools` lists them with their arguments; the descriptions tell the agent which tool to call
-next and where each id comes from.
+All tools are read-only. `GET /api/tools` lists them with their arguments, and each description tells the agent which
+tool to call next and where its ids come from.
 
 | Area      | Tools                                                                                                       |
 | --------- | ----------------------------------------------------------------------------------------------------------- |
@@ -72,52 +43,45 @@ next and where each id comes from.
 | Forums    | `list_forums`, `list_forum_discussions`, `get_forum_posts`                                                  |
 | Activity  | `get_notifications`                                                                                         |
 
-### Reading files
-
-`read_file` takes a `fileurl` from any other tool and returns text: PDF (text layer only, so scanned documents come back
-empty), DOCX, PPTX (slides and speaker notes), XLSX (tab-separated sheets; dates show as Excel serial numbers), HTML,
-plain text and source code. Images are returned as images. Other types (archives, audio, video) are reported as
-unreadable without being downloaded, unless `raw: true` is passed: then the unmodified file of any type is returned as a
-base64 resource. Files up to 20 MB; extracted text is paged with `offset` and `next_offset`. The URL must be
-on the configured Moodle site; the token is added by the server and redirects are not followed.
-
-## OAuth tokens
-
-Nothing is stored. Client ids, authorization codes, access tokens and refresh tokens are all `mm1.` followed by
-base64url of a random 12-byte IV and an AES-256-GCM ciphertext. The key is derived from `OAUTH_SECRET`, and the token
-kind is authenticated, so one kind cannot be used as another. The decrypted payload holds the Moodle `token` and `site`
-(plus the client id, redirect URI and PKCE challenge for codes) and an expiry.
-
-| Token         | Lifetime   | Notes                                                                |
-| ------------- | ---------- | -------------------------------------------------------------------- |
-| client id     | no expiry  | holds the registered redirect URIs, which are matched exactly        |
-| code          | 60 seconds | PKCE (S256) required                                                 |
-| access token  | 12 hours   | sent as `Authorization: Bearer` to `/mcp`                            |
-| refresh token | 90 days    | each refresh returns a new pair, so active connectors stay signed in |
-
-Limits of this design: a single token cannot be revoked (rotating `OAUTH_SECRET` signs everyone out), and anyone holding
-an access token can read that user's Moodle until it expires. The Moodle token inside has its own expiry, set by Moodle.
+`read_file` takes a `fileurl` from another tool and returns text for PDF (text layer only), DOCX, PPTX, XLSX, HTML and
+plain text; images come back as images. Other types are reported as unreadable unless `raw: true` returns the file as
+base64. Files up to 20 MB, paged with `offset` and `next_offset`. The URL must be on the Moodle site; redirects are not
+followed.
 
 ## Configuration
 
 Set `vars` in `wrangler.jsonc`, or in `.dev.vars` locally. `OAUTH_SECRET` is a secret, not a var.
 
-| Variable               | Default                             | Meaning                                                                                                                                   |
-| ---------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `MOODLE_URL`           | `https://enauczanie.pg.edu.pl/2025` | default Moodle site                                                                                                                       |
-| `ALLOWED_MOODLE_HOSTS` | `*`                                 | hosts callers may pick with `X-Moodle-URL`, comma-separated; `*` allows any public https host; empty allows only the host of `MOODLE_URL` |
-| `LOG_LEVEL`            | `info`                              | `debug` also logs successful Moodle calls                                                                                                 |
-| `OAUTH_SECRET`         | unset                               | 32+ random characters (`openssl rand -hex 32`); enables OAuth. Keep it stable                                                             |
+| Variable               | Default                             | Meaning                                                                                                                      |
+| ---------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `MOODLE_URL`           | `https://enauczanie.pg.edu.pl/2025` | default Moodle site                                                                                                          |
+| `ALLOWED_MOODLE_HOSTS` | `*`                                 | hosts callers may pick with `X-Moodle-URL`, comma-separated; `*` is any public https host; empty is only `MOODLE_URL`'s host |
+| `LOG_LEVEL`            | `info`                              | `debug` also logs successful Moodle calls                                                                                    |
+| `OAUTH_SECRET`         | unset                               | 32+ random characters (`openssl rand -hex 32`); enables OAuth. Keep it stable                                                |
 
-The site is chosen by the caller, so it must be https, a public hostname, and on an allowed host. With `*`, anyone can use
-your deployment to reach any public Moodle site; restrict the list if you don't want that.
+With `*`, anyone can use your deployment to reach any public Moodle site; restrict the list if you don't want that.
 
-## Logging
+### OAuth tokens
 
-Logs are JSON lines (`wrangler tail`, or the dashboard). Every line for a request carries `ip` (from Cloudflare's
-`CF-Connecting-IP`) and `tokenId`, the first 12 hex characters of the SHA-256 of the credential the client sent, so you can
-follow one user's activity without seeing their token. Tokens, OAuth codes, QR login keys and request parameters are never
-logged. The IP address is personal data under GDPR, so mind your retention settings.
+Client ids, codes, access tokens and refresh tokens are all sealed (AES-256-GCM, key derived from `OAUTH_SECRET`), so
+nothing is stored. The sealed payload holds the Moodle token and site. Codes require PKCE (S256).
+
+| Token         | Lifetime   |
+| ------------- | ---------- |
+| client id     | no expiry  |
+| code          | 60 seconds |
+| access token  | 12 hours   |
+| refresh token | 90 days    |
+
+A single token cannot be revoked (rotating `OAUTH_SECRET` signs everyone out), and anyone holding an access token can
+read that user's Moodle until it expires.
+
+### Logging
+
+Logs are JSON lines (`wrangler tail`, or the dashboard), one per request. Each carries `ip` (Cloudflare's
+`CF-Connecting-IP`) and `tokenId`, the first 12 hex characters of the SHA-256 of the credential, so you can follow one
+user without seeing their token. Tokens, OAuth codes, QR keys and request parameters are never logged. The IP address is
+personal data under GDPR, so mind your retention settings.
 
 ## Development
 
@@ -125,13 +89,16 @@ Needs Node 24.21 or newer (see `.node-version`) and [pnpm](https://pnpm.io) (`co
 
 ```sh
 pnpm install
-pnpm dev         # Worker on :8787 + Vite with hot reload on :5173; open :5173
-pnpm check       # ESLint, Prettier, typecheck, tests
-pnpm format      # fix what can be fixed
+pnpm dev            # Worker on :8787 + Vite on :5173; open :5173
+pnpm check          # ESLint, Prettier, typecheck, tests (including the end-to-end tests)
+pnpm test:browser   # Playwright tests of the setup and OAuth pages
+pnpm format         # fix what can be fixed
 ```
 
-Code is in `packages/`: `shared` (types and link parsing), `server` (the Worker), `web` (the setup page).
-See [AGENTS.md](AGENTS.md) for conventions and how to add a tool.
+Code lives in `packages/`: `shared`, `server` (the Worker), `web` (the setup page) and `e2e`. The end-to-end tests run
+the bundled Worker in workerd against a mock Moodle, so they need no network. The browser tests need Chromium: run
+`pnpm --filter @moodle-mcp/e2e exec playwright install chromium` once. See [AGENTS.md](AGENTS.md) for conventions and
+how to add a tool.
 
 ## Deploy
 
@@ -141,7 +108,6 @@ pnpm exec wrangler secret put OAUTH_SECRET
 pnpm run deploy
 ```
 
-The Worker is routed to the custom domain in `wrangler.jsonc`; change or remove `routes` for your own.
-
-Or let GitHub do it: `deploy.yml` tests and deploys every push to `main`. It needs the repository secrets
-`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` and `OAUTH_SECRET`.
+`wrangler.jsonc` routes the Worker to a custom domain; change or remove `routes` for your own. Alternatively,
+`deploy.yml` tests and deploys every push to `main`; it needs the repository secrets `CLOUDFLARE_API_TOKEN`,
+`CLOUDFLARE_ACCOUNT_ID` and `OAUTH_SECRET`.

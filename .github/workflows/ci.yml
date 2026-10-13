@@ -47,3 +47,52 @@ jobs:
 
       - name: Build and bundle (no upload)
         run: pnpm exec wrangler deploy --dry-run
+
+  # Separate job so the slower browser tests run next to the checks above. deploy.yml reuses this workflow,
+  # so a deploy waits for them too.
+  browser:
+    name: Browser tests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - id: playwright
+        run: echo "version=$(pnpm --filter @moodle-mcp/e2e exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v6
+        id: browsers
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      - name: Install Chromium
+        if: steps.browsers.outputs.cache-hit != 'true'
+        run: pnpm --filter @moodle-mcp/e2e exec playwright install --with-deps chromium
+
+      # The system libraries are not part of the cache.
+      - name: Install Chromium system dependencies
+        if: steps.browsers.outputs.cache-hit == 'true'
+        run: pnpm --filter @moodle-mcp/e2e exec playwright install-deps chromium
+
+      - name: Run the browser tests
+        run: pnpm run test:browser
+
+      - name: Keep traces of failed tests
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-traces
+          path: packages/e2e/test-results
+          retention-days: 7
