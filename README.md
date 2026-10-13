@@ -86,7 +86,7 @@ personal data under GDPR, so mind your retention settings.
 
 ## Development
 
-Needs Node 24.21 or newer (see `.node-version`) and [pnpm](https://pnpm.io) (`corepack enable` picks the right version).
+Needs Node 26.11 or newer (see `.node-version`) and [pnpm](https://pnpm.io) (`corepack enable` picks the right version).
 
 ```sh
 pnpm install
