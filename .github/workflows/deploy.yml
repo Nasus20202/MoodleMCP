@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 10
     environment:
       name: production
-      url: ${{ steps.deploy.outputs.deployment-url }}
+      url: ${{ steps.url.outputs.url }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -50,3 +50,12 @@ jobs:
           command: deploy
         env:
           OAUTH_SECRET: ${{ secrets.OAUTH_SECRET }}
+
+      # wrangler-action reports custom domains as "host (custom domain)", without a protocol.
+      - id: url
+        env:
+          DEPLOYED: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          url="${DEPLOYED%% *}"
+          case "$url" in http*) ;; *) url="https://$url" ;; esac
+          echo "url=$url" >> "$GITHUB_OUTPUT"

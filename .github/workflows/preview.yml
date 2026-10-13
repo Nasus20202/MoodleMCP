@@ -1,0 +1,115 @@
+name: Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: read
+
+# One preview per PR; a newer push supersedes a running deploy, but cleanup is never cancelled by a deploy.
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+env:
+  WORKER_NAME: moodle-mcp-pr-${{ github.event.pull_request.number }}
+
+jobs:
+  deploy:
+    name: Deploy preview
+    # Fork PRs get no secrets, so they cannot be deployed.
+    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    environment:
+      name: preview-pr-${{ github.event.pull_request.number }}
+      url: ${{ steps.url.outputs.url }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - id: deploy
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: pnpm
+          secrets: OAUTH_SECRET
+          command: deploy --env preview --name ${{ env.WORKER_NAME }}
+        env:
+          # Previews get their own secret so a leaked preview cannot mint production tokens.
+          OAUTH_SECRET: ${{ secrets.PREVIEW_OAUTH_SECRET }}
+
+      # wrangler-action reports custom domains as "host (custom domain)", without a protocol.
+      - id: url
+        env:
+          DEPLOYED: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          url="${DEPLOYED%% *}"
+          case "$url" in http*) ;; *) url="https://$url" ;; esac
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Comment preview URL
+        env:
+          GH_TOKEN: ${{ github.token }}
+          URL: ${{ steps.url.outputs.url }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh pr comment "$PR" --repo "$REPO" --edit-last --create-if-none --body "Preview deployed: $URL
+
+          Commit: \`${SHA::7}\`. It is deleted when this PR is closed."
+
+  cleanup:
+    name: Delete preview
+    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+      deployments: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: pnpm
+          command: delete --name ${{ env.WORKER_NAME }} --force
+
+      - name: Update comment and deployment environment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh pr comment "$PR" --repo "$REPO" --edit-last --body "Preview deleted (PR closed)." || true
+          gh api -X DELETE "repos/$REPO/environments/preview-pr-$PR" || true
