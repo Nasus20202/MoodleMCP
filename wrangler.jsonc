@@ -27,6 +27,10 @@
     "ALLOWED_MOODLE_HOSTS": "*",
     "LOG_LEVEL": "info",
   },
+  // Applied by the production deploy. Previews get their workers.dev URLs from `preview_urls`; without it a
+  // Preview has no URL. `workers_dev` stays off so production itself is not served from workers.dev.
+  "workers_dev": false,
+  "preview_urls": true,
   // Per-PR previews (.github/workflows/preview.yml): `wrangler preview --name pr-<n>`. A Preview inherits nothing
   // from production, so it repeats what it needs. OAUTH_SECRET is set per Preview by the workflow.
   "previews": {
