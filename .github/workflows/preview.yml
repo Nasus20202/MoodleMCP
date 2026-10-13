@@ -16,14 +16,10 @@ env:
   WORKER_NAME: moodle-mcp-pr-${{ github.event.pull_request.number }}
 
 jobs:
-  verify:
-    # Fork PRs get no secrets, so they cannot be deployed.
-    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
-    uses: ./.github/workflows/ci.yml
-
   deploy:
     name: Deploy preview
-    needs: verify
+    # Fork PRs get no secrets, so they cannot be deployed.
+    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -31,7 +27,7 @@ jobs:
       pull-requests: write
     environment:
       name: preview-pr-${{ github.event.pull_request.number }}
-      url: ${{ steps.deploy.outputs.deployment-url }}
+      url: ${{ steps.url.outputs.url }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -58,10 +54,19 @@ jobs:
           # Previews get their own secret so a leaked preview cannot mint production tokens.
           OAUTH_SECRET: ${{ secrets.PREVIEW_OAUTH_SECRET || secrets.OAUTH_SECRET }}
 
+      # wrangler-action reports custom domains as "host (custom domain)", without a protocol.
+      - id: url
+        env:
+          DEPLOYED: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          url="${DEPLOYED%% *}"
+          case "$url" in http*) ;; *) url="https://$url" ;; esac
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
       - name: Comment preview URL
         env:
           GH_TOKEN: ${{ github.token }}
-          URL: ${{ steps.deploy.outputs.deployment-url }}
+          URL: ${{ steps.url.outputs.url }}
           SHA: ${{ github.event.pull_request.head.sha }}
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
