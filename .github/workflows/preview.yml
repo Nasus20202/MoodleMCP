@@ -44,8 +44,9 @@ jobs:
       - id: preview
         run: |
           set -o pipefail
-          output="$(pnpm exec wrangler preview --name "pr-$PR" --json)"
-          url="$(jq -er '.preview.urls[0]' <<< "$output")"
+          # The build step also writes to stdout, so the JSON is the part from the first line that starts with `{`.
+          pnpm exec wrangler preview --name "pr-$PR" --json | tee "$RUNNER_TEMP/preview.out"
+          url="$(sed -n '/^{/,$p' "$RUNNER_TEMP/preview.out" | jq -er '.preview.urls[0]')"
           echo "url=$url" >> "$GITHUB_OUTPUT"
         env:
           PR: ${{ github.event.pull_request.number }}
