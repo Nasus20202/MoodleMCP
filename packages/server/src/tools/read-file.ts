@@ -1,5 +1,6 @@
 import * as z from 'zod/v4';
 
+import { MAX_PAGES_PER_CALL } from '../files/pdf.ts';
 import { classify, pageText, readFile, toBase64, unsupportedReason } from '../files/read.ts';
 import type { DownloadedFile } from '../moodle/client.ts';
 import { defineCustomTool, jsonContent, type ToolContent } from './define.ts';
@@ -23,7 +24,10 @@ export const readFileTool = defineCustomTool({
     'get_course_contents, list_resources, list_pages, list_labels, list_wikis or get_forum_posts ' +
     '(it looks like https://<site>/webservice/pluginfile.php/...). Returns JSON with the extracted `text` ' +
     'and paging info; if `next_offset` is not null the file is longer, so call again with `offset` set to ' +
-    'that value. Images are returned as images. Scanned PDFs have no text layer and come back empty. ' +
+    `that value. PDFs are read a few pages at a time (at most ${MAX_PAGES_PER_CALL} per call), each page headed ` +
+    '"--- Page N ---": while `next_page` is not null, call again with `page` and `offset` set to `next_page` ' +
+    'and `next_offset`; to jump to a page, pass `page` alone. Images are returned as images. Scanned PDFs ' +
+    'have no text layer and come back empty. ' +
     'XLSX comes back as tab-separated sheets. Other types (archives, audio, video) cannot be read as ' +
     'text: set `raw` to true to get the unmodified file as base64 (any type), otherwise tell the ' +
     'user and give them the link. Files up to 20 MB.',
@@ -34,7 +38,15 @@ export const readFileTool = defineCustomTool({
       .int()
       .min(0)
       .default(0)
-      .describe('character to start from; use `next_offset` from the previous call'),
+      .describe(
+        'character to start from; use `next_offset` from the previous call (for PDFs, counted from `page`)',
+      ),
+    page: z
+      .number()
+      .int()
+      .min(1)
+      .default(1)
+      .describe('PDF only: page to start from; use `next_page` from the previous call'),
     raw: z
       .boolean()
       .default(false)
@@ -49,7 +61,7 @@ export const readFileTool = defineCustomTool({
       .default(DEFAULT_CHARS)
       .describe(`most characters to return (default ${DEFAULT_CHARS}, max ${MAX_CHARS})`),
   }),
-  async run({ client, logger }, { file_url, offset, max_chars, raw }) {
+  async run({ client, logger }, { file_url, offset, page, max_chars, raw }) {
     if (raw) {
       const file = await client.download(file_url, MAX_FILE_BYTES);
       logger.info('file returned raw', { mime: file.mimeType, bytes: file.bytes.byteLength });
@@ -82,7 +94,7 @@ export const readFileTool = defineCustomTool({
     const started = Date.now();
     let reading;
     try {
-      reading = await readFile(file);
+      reading = await readFile(file, { page, offset, maxChars: max_chars });
     } catch (error) {
       // Corrupt, encrypted or oversized-when-inflated files: report to the model, don't crash the call.
       logger.warn('file parse failed', {
@@ -113,6 +125,40 @@ export const readFileTool = defineCustomTool({
       });
       const image: ToolContent = { type: 'image', data: reading.base64, mimeType: reading.mimeType };
       return [image, ...jsonContent({ ...meta, readable: true, note: 'The image is attached.' })];
+    }
+
+    if (reading.kind === 'pdf') {
+      const { chunk } = reading;
+      const pagesRead =
+        chunk.firstPage === undefined ? 0 : (chunk.lastPage ?? chunk.firstPage) - chunk.firstPage + 1;
+      logger.info('file parsed', {
+        format,
+        mime: file.mimeType,
+        bytes: meta.size_bytes,
+        pages: chunk.pages,
+        pagesRead,
+        chars: chunk.text.length,
+        truncated: chunk.next !== null,
+        ms: Date.now() - started,
+      });
+      const noText = chunk.text.replace(/--- Page \d+ ---/g, '').trim() === '';
+      return jsonContent({
+        ...meta,
+        readable: true,
+        format: 'pdf',
+        pages: chunk.pages,
+        page,
+        offset,
+        ...(chunk.firstPage !== undefined && { first_page: chunk.firstPage, last_page: chunk.lastPage }),
+        next_page: chunk.next?.page ?? null,
+        next_offset: chunk.next?.offset ?? null,
+        ...(page > chunk.pages
+          ? { note: `page is past the end of the document, which has ${chunk.pages} pages.` }
+          : noText
+            ? { note: 'No text found on these pages. A scanned or image-only document has no text layer.' }
+            : {}),
+        text: chunk.text,
+      });
     }
 
     const { slice, totalChars, nextOffset } = pageText(reading.text, { offset, maxChars: max_chars });

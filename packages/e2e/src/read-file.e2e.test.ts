@@ -48,8 +48,14 @@ describe('read_file against a mock Moodle file server', () => {
 
   it('extracts the text layer of a PDF', async () => {
     const { json } = await read(FILE_URLS.slides);
-    expect(json()).toMatchObject({ filename: 'slides.pdf', pages: 1 });
-    expect(json().text).toContain('Lecture one slides');
+    expect(json()).toMatchObject({ filename: 'slides.pdf', pages: 1, next_page: null, next_offset: null });
+    expect(json().text).toBe('--- Page 1 ---\nLecture one slides');
+  });
+
+  it('says when a PDF page is past the end', async () => {
+    const { json } = await read(FILE_URLS.slides, { page: 3 });
+    expect(json()).toMatchObject({ pages: 1, text: '', next_page: null });
+    expect(json().note).toContain('past the end');
   });
 
   it('extracts paragraphs from a Word document', async () => {

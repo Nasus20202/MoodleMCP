@@ -1,8 +1,6 @@
 import type { DownloadedFile } from '../moodle/client.ts';
+import type { PdfChunk, PdfWindow } from './pdf.ts';
 import { htmlToText } from './text.ts';
-
-/** PDF.js `VerbosityLevel.ERRORS`: its font warnings ("TT: undefined function") are noise, the text still extracts. */
-const PDFJS_ERRORS_ONLY = 0;
 
 /** Largest image handed to the model as an image rather than described. */
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
@@ -83,6 +81,7 @@ export interface ReadOptions {
 
 export type FileReading =
   | { kind: 'text'; format: string; text: string; pages?: number }
+  | { kind: 'pdf'; chunk: PdfChunk }
   | { kind: 'image'; mimeType: string; base64: string }
   | { kind: 'unsupported'; reason: string };
 
@@ -120,14 +119,18 @@ export const unsupportedReason = (meta: Pick<DownloadedFile, 'mimeType' | 'filen
 /**
  * Extracts what a model can read from a downloaded file. The parsers (PDF.js, fflate) are large and most
  * requests never read a document, so each is loaded on first use rather than when the Worker starts.
+ *
+ * PDFs are read only as far as `pdfWindow` reaches, because extracting a page is what costs CPU; every other
+ * format is cheap enough to extract whole and page through with `pageText`.
  */
-export async function readFile(file: DownloadedFile): Promise<FileReading> {
+export async function readFile(
+  file: DownloadedFile,
+  pdfWindow: PdfWindow = { page: 1, offset: 0, maxChars: Infinity },
+): Promise<FileReading> {
   switch (classify(file)) {
     case 'pdf': {
-      const { extractText, getDocumentProxy } = await import('unpdf');
-      const pdf = await getDocumentProxy(new Uint8Array(file.bytes), { verbosity: PDFJS_ERRORS_ONLY });
-      const { text, totalPages } = await extractText(pdf, { mergePages: true });
-      return { kind: 'text', format: 'pdf', text: text.trim(), pages: totalPages };
+      const { readPdf } = await import('./pdf.ts');
+      return { kind: 'pdf', chunk: await readPdf(file.bytes, pdfWindow) };
     }
     case 'docx': {
       const { docxText } = await import('./office.ts');
