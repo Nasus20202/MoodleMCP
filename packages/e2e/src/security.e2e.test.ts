@@ -113,7 +113,8 @@ describe('secrets stay out of logs and responses', () => {
         token: BOB.token,
       }),
     });
-    const code = new URL(consent.headers.get('Location') ?? '').searchParams.get('code') ?? '';
+    const code =
+      new URL(((await consent.json()) as { redirectUrl: string }).redirectUrl).searchParams.get('code') ?? '';
     expect(code).not.toBe('');
     // QR exchange.
     world.moodle.issueQrKey('qr-key-secret', ALICE);

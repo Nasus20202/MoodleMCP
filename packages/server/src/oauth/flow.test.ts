@@ -54,8 +54,8 @@ async function obtainCode(h: Harness, token = MOODLE_TOKEN) {
   const clientId = await register(h);
   const params = await authorizeParams(clientId);
   const res = await h.request('/oauth/authorize', form({ ...params, site: TEST_SITE, token }));
-  expect(res.status).toBe(302);
-  const location = new URL(res.headers.get('Location') ?? '');
+  expect(res.status).toBe(200);
+  const location = new URL((await res.json<{ redirectUrl: string }>()).redirectUrl);
   expect(`${location.origin}${location.pathname}`).toBe(REDIRECT);
   expect(location.searchParams.get('state')).toBe('xyz');
   return { clientId, code: location.searchParams.get('code') ?? '' };
@@ -125,25 +125,22 @@ describe('client registration', () => {
 });
 
 describe('authorization', () => {
-  it('shows the consent page for a registered client', async () => {
+  it('sends the user to the consent screen of the setup app, keeping the request', async () => {
     const h = setup();
     const params = new URLSearchParams(await authorizeParams(await register(h)));
     const res = await h.request(`/oauth/authorize?${params.toString()}`);
-    expect(res.status).toBe(200);
-    expect(res.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
-    const page = await res.text();
-    expect(page).toContain('chatgpt.example');
-    expect(page).toContain(TEST_SITE);
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe(`/connect?${params.toString()}`);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
   });
 
-  it('explains how to get a token, with a sign-in link for the site', async () => {
+  it('tells the consent screen who is asking and which site to prefill', async () => {
     const h = setup();
     const params = new URLSearchParams(await authorizeParams(await register(h)));
-    const page = await (await h.request(`/oauth/authorize?${params.toString()}`)).text();
-    expect(page).toContain('How do I get my token?');
-    expect(page).toContain('Model Context Protocol');
-    expect(page).toContain(`${TEST_SITE}/admin/tool/mobile/launch.php?`);
-    expect(page).toContain('confirmed=1');
+    const res = await h.request(`/oauth/request?${params.toString()}`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ redirectHost: 'chatgpt.example', defaultSite: TEST_SITE });
+    expect(h.moodle.calls).toHaveLength(0);
   });
 
   it('accepts the moodlemobile:// link instead of a raw token', async () => {
@@ -171,7 +168,7 @@ describe('authorization', () => {
     const params = new URLSearchParams(
       await authorizeParams(await register(h), 'https://attacker.example/cb'),
     );
-    const res = await h.request(`/oauth/authorize?${params.toString()}`);
+    const res = await h.request(`/oauth/request?${params.toString()}`);
     expect(res.status).toBe(400);
     expect(res.headers.get('Location')).toBeNull();
 
@@ -194,7 +191,7 @@ describe('authorization', () => {
       ...(await authorizeParams(await register(h))),
       code_challenge_method: 'plain',
     });
-    expect((await h.request(`/oauth/authorize?${params.toString()}`)).status).toBe(400);
+    expect((await h.request(`/oauth/request?${params.toString()}`)).status).toBe(400);
   });
 
   it('re-asks when Moodle rejects the token, without issuing a code', async () => {
@@ -203,7 +200,7 @@ describe('authorization', () => {
     const res = await h.request('/oauth/authorize', form({ ...params, site: TEST_SITE, token: 'bad' }));
     expect(res.status).toBe(400);
     expect(res.headers.get('Location')).toBeNull();
-    expect(await res.text()).toContain('Moodle rejected this token');
+    expect(await res.json()).toEqual({ error: 'Moodle rejected this token. Check it and the site.' });
   });
 
   it('refuses a site the policy does not allow', async () => {

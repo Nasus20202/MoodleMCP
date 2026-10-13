@@ -48,8 +48,12 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           packageManager: pnpm
-          secrets: OAUTH_SECRET
-          command: deploy --env preview --name ${{ env.WORKER_NAME }}
+          # `secrets: OAUTH_SECRET` would upload to the production worker (it ignores `--name`), so the secret
+          # travels with the deploy instead, as an encrypted secret of this PR's worker.
+          preCommands: |
+            umask 077
+            jq -n --arg v "$OAUTH_SECRET" '{OAUTH_SECRET: $v}' > "$RUNNER_TEMP/secrets.json"
+          command: deploy --env preview --name ${{ env.WORKER_NAME }} --secrets-file ${{ runner.temp }}/secrets.json
         env:
           # Previews get their own secret so a leaked preview cannot mint production tokens.
           OAUTH_SECRET: ${{ secrets.PREVIEW_OAUTH_SECRET }}

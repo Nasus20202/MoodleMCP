@@ -54,10 +54,13 @@ const consent = (world: World, clientId: string, fields: Record<string, string> 
     form({ ...authorizeParams(clientId), site: SITE_URL, token: ALICE.token, ...fields }),
   );
 
-const codeFrom = (res: Response): string => {
-  expect(res.status).toBe(302);
-  return new URL(res.headers.get('Location') ?? '').searchParams.get('code') ?? '';
+const redirectOf = async (res: Response): Promise<URL> => {
+  expect(res.status).toBe(200);
+  return new URL(((await res.json()) as { redirectUrl: string }).redirectUrl);
 };
+
+const codeFrom = async (res: Response): Promise<string> =>
+  (await redirectOf(res)).searchParams.get('code') ?? '';
 
 const redeem = async (world: World, fields: Record<string, string>) => {
   const res = await world.worker.fetch('/oauth/token', form(fields));
@@ -71,7 +74,7 @@ const redeem = async (world: World, fields: Record<string, string>) => {
 /** Registers, consents and redeems the code: what a connector such as ChatGPT does. */
 async function signIn(world: World, fields: Record<string, string> = {}) {
   const clientId = await register(world);
-  const code = codeFrom(await consent(world, clientId, fields));
+  const code = await codeFrom(await consent(world, clientId, fields));
   const { body } = await redeem(world, {
     grant_type: 'authorization_code',
     code,
@@ -184,28 +187,23 @@ describe('OAuth enabled', () => {
     });
   });
 
-  describe('the consent page', () => {
-    it('shows who is asking and where the user would be sent, and explains how to get a token', async () => {
+  describe('the consent screen', () => {
+    const asked = (clientId: string, overrides: Record<string, string> = {}) =>
+      new URLSearchParams(authorizeParams(clientId, overrides)).toString();
+
+    it('sends the user to the consent page of the setup app, keeping the request', async () => {
       const clientId = await register(world);
-      const res = await world.worker.fetch(
-        `/oauth/authorize?${new URLSearchParams(authorizeParams(clientId)).toString()}`,
-      );
-      expect(res.status).toBe(200);
-      expect(res.headers.get('Content-Type')).toContain('text/html');
-      expect(res.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
+      const res = await world.worker.fetch(`/oauth/authorize?${asked(clientId)}`);
+      expect(res.status).toBe(302);
+      expect(res.headers.get('Location')).toBe(`/connect?${asked(clientId)}`);
       expect(res.headers.get('Cache-Control')).toBe('no-store');
-      const page = await res.text();
-      expect(page).toContain('chat.example.com');
-      expect(page).toContain(SITE_URL);
-      expect(page).toContain('How do I get my token?');
-      expect(page).toContain(`${SITE_URL}/admin/tool/mobile/launch.php?`);
     });
 
-    it('does not contact Moodle just to show the page', async () => {
+    it('tells it who is asking and where the user would be sent back, without contacting Moodle', async () => {
       const clientId = await register(world);
-      await world.worker.fetch(
-        `/oauth/authorize?${new URLSearchParams(authorizeParams(clientId)).toString()}`,
-      );
+      const res = await world.worker.fetch(`/oauth/request?${asked(clientId)}`);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ redirectHost: 'chat.example.com', defaultSite: SITE_URL });
       expect(world.network.sites.flatMap((s) => s.requests)).toHaveLength(0);
     });
 
@@ -215,10 +213,10 @@ describe('OAuth enabled', () => {
       ['PKCE method "plain"', { code_challenge_method: 'plain' }],
       ['a response type other than code', { response_type: 'token' }],
       ['a malformed challenge', { code_challenge: 'short' }],
-    ])('refuses %s with an error page and never redirects', async (_name, override) => {
+    ])('refuses %s and never redirects', async (_name, override) => {
       const clientId = await register(world);
       const params = authorizeParams(clientId, override);
-      const get = await world.worker.fetch(`/oauth/authorize?${new URLSearchParams(params).toString()}`);
+      const get = await world.worker.fetch(`/oauth/request?${new URLSearchParams(params).toString()}`);
       expect(get.status).toBe(400);
       expect(get.headers.get('Location')).toBeNull();
       const post = await world.worker.fetch(
@@ -235,8 +233,7 @@ describe('OAuth enabled', () => {
     it('checks the token with Moodle, then redirects back with a code and the original state', async () => {
       const clientId = await register(world);
       const res = await consent(world, clientId);
-      expect(res.status).toBe(302);
-      const location = new URL(res.headers.get('Location') ?? '');
+      const location = await redirectOf(res);
       expect(`${location.origin}${location.pathname}`).toBe(REDIRECT);
       expect(location.searchParams.get('state')).toBe('state-123');
       expect(location.searchParams.get('code')).toBeTruthy();
@@ -252,13 +249,13 @@ describe('OAuth enabled', () => {
         '/oauth/authorize',
         form({ ...withoutState, site: SITE_URL, token: ALICE.token }),
       );
-      expect(new URL(res.headers.get('Location') ?? '').searchParams.has('state')).toBe(false);
+      expect((await redirectOf(res)).searchParams.has('state')).toBe(false);
     });
 
     it('accepts the moodlemobile://token=… link Moodle shows after a browser sign-in', async () => {
       const link = `moodlemobile://token=${Buffer.from(`site-id:::${ALICE.token}:::private`).toString('base64')}`;
       const clientId = await register(world);
-      expect(codeFrom(await consent(world, clientId, { token: link }))).toBeTruthy();
+      expect(await codeFrom(await consent(world, clientId, { token: link }))).toBeTruthy();
       expect(world.moodle.restCalls[0]?.token).toBe(ALICE.token);
     });
 
@@ -277,10 +274,10 @@ describe('OAuth enabled', () => {
       const res = await consent(world, clientId, { token: 'wrong-token' });
       expect(res.status).toBe(400);
       expect(res.headers.get('Location')).toBeNull();
-      const page = await res.text();
-      expect(page).toContain('Moodle rejected this token');
-      // The page offers the form again but never echoes the secret back.
-      expect(page).not.toContain('wrong-token');
+      const body = await res.text();
+      expect(body).toContain('Moodle rejected this token');
+      // The answer never echoes the secret back.
+      expect(body).not.toContain('wrong-token');
     });
 
     it('says so when the Moodle site cannot be reached', async () => {
@@ -350,7 +347,7 @@ describe('OAuth enabled', () => {
       'refuses %s with invalid_grant, and still honours the genuine request afterwards',
       async (_name, override) => {
         const clientId = await register(world);
-        const code = codeFrom(await consent(world, clientId));
+        const code = await codeFrom(await consent(world, clientId));
         const good = {
           grant_type: 'authorization_code',
           code,
@@ -544,12 +541,12 @@ describe('OAuth enabled', () => {
       const page = await world.worker.fetch(
         `${endpoint(meta.authorization_endpoint)}?${new URLSearchParams(authorizeParams(registered.client_id)).toString()}`,
       );
-      expect(page.status).toBe(200);
+      expect(page.status).toBe(302);
       const redirected = await world.worker.fetch(
         endpoint(meta.authorization_endpoint),
         form({ ...authorizeParams(registered.client_id), site: SITE_URL, token: ALICE.token }),
       );
-      const code = codeFrom(redirected);
+      const code = await codeFrom(redirected);
 
       const issued = (await (
         await world.worker.fetch(

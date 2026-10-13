@@ -1,4 +1,6 @@
 import type {
+  AuthorizeContextResponse,
+  AuthorizeSubmitResponse,
   ConfigResponse,
   ErrorResponse,
   ExchangeRequest,
@@ -34,4 +36,18 @@ export async function exchangeQR(qr: string): Promise<string> {
   });
   if (!res.ok) throw new Error(await readError(res));
   return ((await res.json()) as ExchangeResponse).token;
+}
+
+/** Who is asking for access, for an authorization request (the query string the client sent). */
+export async function fetchAuthorizeContext(query: string): Promise<AuthorizeContextResponse> {
+  const res = await fetch(`/oauth/request${query}`);
+  if (!res.ok) throw new Error(await readError(res));
+  return (await res.json()) as AuthorizeContextResponse;
+}
+
+/** Submits the consent form; resolves to the address to send the user back to, carrying the code. */
+export async function submitConsent(fields: Record<string, string>): Promise<string> {
+  const res = await fetch('/oauth/authorize', { method: 'POST', body: new URLSearchParams(fields) });
+  if (!res.ok) throw new Error(await readError(res));
+  return ((await res.json()) as AuthorizeSubmitResponse).redirectUrl;
 }

@@ -28,9 +28,11 @@
     "LOG_LEVEL": "info",
   },
   // Per-PR preview workers (.github/workflows/preview.yml), deployed with `--env preview --name moodle-mcp-pr-<n>`.
-  // Routes are not inherited, so previews live on workers.dev instead of the production domain.
+  // Previews live on workers.dev instead of the production domain.
   "env": {
     "preview": {
+      // Explicit: `routes` is inherited from the top level, so omitting it would claim the production domain.
+      "routes": [],
       "workers_dev": true,
       "ai": { "binding": "AI" },
       "vars": {

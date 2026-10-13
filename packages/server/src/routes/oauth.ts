@@ -1,23 +1,30 @@
-import { classifyLink, decodeLaunchToken, LinkError, QRKind } from '@moodle-mcp/shared';
+import {
+  type AuthorizeContextResponse,
+  type AuthorizeSubmitResponse,
+  classifyLink,
+  decodeLaunchToken,
+  LinkError,
+  QRKind,
+} from '@moodle-mcp/shared';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import * as z from 'zod/v4';
 
 import type { AppEnv } from '../http/context.ts';
-import { HttpError } from '../http/errors.ts';
+import { HttpError, jsonError } from '../http/errors.ts';
 import type { Logger } from '../logger.ts';
 import { MoodleClient } from '../moodle/client.ts';
 import { MoodleError, MoodleTransportError } from '../moodle/errors.ts';
 import { MoodleFunction } from '../moodle/functions.ts';
 import { pkceChallenge, timingSafeEqualText } from '../oauth/encoding.ts';
-import { consentPage, errorPage } from '../oauth/pages.ts';
 import type { Sealer } from '../oauth/sealer.ts';
 import { clientSeal, codeSeal, type Credentials, Lifetime, refreshSeal, SealKind } from '../oauth/types.ts';
 import { SiteNotAllowedError, type SitePolicy } from '../site-policy.ts';
 
 export const OAUTH_PATHS = {
   authorize: '/oauth/authorize',
+  request: '/oauth/request',
   token: '/oauth/token',
   register: '/oauth/register',
   resourceMetadata: '/.well-known/oauth-protected-resource',
@@ -33,12 +40,8 @@ const limitBody = bodyLimit({
     throw new HttpError(413, 'Request too large');
   },
 });
-const HTML_HEADERS = {
-  'Cache-Control': 'no-store',
-  'Content-Security-Policy':
-    "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; frame-ancestors 'none'",
-  'Referrer-Policy': 'no-referrer',
-} as const;
+/** Where the consent screen lives: a page of the setup app, which the OAuth endpoints below feed. */
+export const CONSENT_PATH = '/connect';
 
 /** Redirect targets must be https, or plain http on the loopback interface (native and desktop clients). */
 function isValidRedirectUri(raw: string): boolean {
@@ -150,150 +153,146 @@ export function oauthRoutes(deps: {
     return issueTokens({ token: grant.token, site: grant.site }, grant.clientId);
   }
 
-  return new Hono<AppEnv>()
-    .use('/.well-known/*', cors())
-    .use('/oauth/register', cors())
-    .use('/oauth/token', cors())
-    .post('/oauth/*', limitBody)
-    .get('/.well-known/oauth-protected-resource/*', (c) => c.json(protectedResource(origin(c.req.url))))
-    .get(OAUTH_PATHS.resourceMetadata, (c) => c.json(protectedResource(origin(c.req.url))))
-    .get('/.well-known/oauth-authorization-server/*', (c) => c.json(serverMetadata(origin(c.req.url))))
-    .get(OAUTH_PATHS.serverMetadata, (c) => c.json(serverMetadata(origin(c.req.url))))
-    .post(OAUTH_PATHS.register, async (c) => {
-      const parsed = registrationRequest.safeParse(await c.req.json().catch(() => undefined));
-      if (!parsed.success) {
-        logger.warn('oauth register rejected: invalid redirect_uris', { ...c.get('client') });
+  return (
+    new Hono<AppEnv>()
+      .use('/.well-known/*', cors())
+      .use('/oauth/register', cors())
+      .use('/oauth/token', cors())
+      .post('/oauth/*', limitBody)
+      .get('/.well-known/oauth-protected-resource/*', (c) => c.json(protectedResource(origin(c.req.url))))
+      .get(OAUTH_PATHS.resourceMetadata, (c) => c.json(protectedResource(origin(c.req.url))))
+      .get('/.well-known/oauth-authorization-server/*', (c) => c.json(serverMetadata(origin(c.req.url))))
+      .get(OAUTH_PATHS.serverMetadata, (c) => c.json(serverMetadata(origin(c.req.url))))
+      .post(OAUTH_PATHS.register, async (c) => {
+        const parsed = registrationRequest.safeParse(await c.req.json().catch(() => undefined));
+        if (!parsed.success) {
+          logger.warn('oauth register rejected: invalid redirect_uris', { ...c.get('client') });
+          return c.json(
+            {
+              error: 'invalid_redirect_uri',
+              error_description: 'redirect_uris must be https (or loopback http) URLs',
+            },
+            400,
+          );
+        }
+        const clientId = await sealer.seal(SealKind.Client, { redirectUris: parsed.data.redirect_uris });
+        logger.info('oauth client registered', { ...c.get('client') });
         return c.json(
           {
-            error: 'invalid_redirect_uri',
-            error_description: 'redirect_uris must be https (or loopback http) URLs',
+            client_id: clientId,
+            client_name: parsed.data.client_name,
+            redirect_uris: parsed.data.redirect_uris,
+            grant_types: ['authorization_code', 'refresh_token'],
+            response_types: ['code'],
+            token_endpoint_auth_method: 'none',
           },
-          400,
+          201,
+          { 'Cache-Control': 'no-store' },
         );
-      }
-      const clientId = await sealer.seal(SealKind.Client, { redirectUris: parsed.data.redirect_uris });
-      logger.info('oauth client registered', { ...c.get('client') });
-      return c.json(
-        {
-          client_id: clientId,
-          client_name: parsed.data.client_name,
-          redirect_uris: parsed.data.redirect_uris,
-          grant_types: ['authorization_code', 'refresh_token'],
-          response_types: ['code'],
-          token_endpoint_auth_method: 'none',
-        },
-        201,
-        { 'Cache-Control': 'no-store' },
-      );
-    })
-    .get(OAUTH_PATHS.authorize, async (c) => {
-      const parsed = authorizeRequest.safeParse(c.req.query());
-      if (!parsed.success) return c.html(errorPage('Invalid authorization request.'), 400, HTML_HEADERS);
-      try {
-        const redirectHost = await validateRequest(parsed.data);
-        return c.html(
-          consentPage({
-            fields: parsed.data as Record<string, string>,
-            redirectHost,
-            defaultSite: policy.defaultUrl,
-          }),
-          200,
-          HTML_HEADERS,
+      })
+      // Clients send the user here; the consent screen itself is the setup app's /connect page.
+      .get(OAUTH_PATHS.authorize, (c) => {
+        c.header('Cache-Control', 'no-store');
+        c.header('Referrer-Policy', 'no-referrer');
+        return c.redirect(`${CONSENT_PATH}${new URL(c.req.url).search}`, 302);
+      })
+      // What the consent screen needs to show: who is asking, and the default site. Also where a bad request is caught.
+      .get(OAUTH_PATHS.request, async (c) => {
+        c.header('Cache-Control', 'no-store');
+        const parsed = authorizeRequest.safeParse(c.req.query());
+        if (!parsed.success) return c.json(jsonError('Invalid authorization request.'), 400);
+        try {
+          const redirectHost = await validateRequest(parsed.data);
+          const body: AuthorizeContextResponse = { redirectHost, defaultSite: policy.defaultUrl };
+          return c.json(body);
+        } catch (error) {
+          if (error instanceof GrantError) return c.json(jsonError(error.message), 400);
+          throw error;
+        }
+      })
+      .post(OAUTH_PATHS.authorize, async (c) => {
+        c.header('Cache-Control', 'no-store');
+        const form = Object.fromEntries(
+          Object.entries(await c.req.parseBody()).filter(([, v]) => typeof v === 'string'),
         );
-      } catch (error) {
-        if (error instanceof GrantError) return c.html(errorPage(error.message), 400, HTML_HEADERS);
-        throw error;
-      }
-    })
-    .post(OAUTH_PATHS.authorize, async (c) => {
-      const form = Object.fromEntries(
-        Object.entries(await c.req.parseBody()).filter(([, v]) => typeof v === 'string'),
-      );
-      const parsed = consentSubmission.safeParse(form);
-      if (!parsed.success) return c.html(errorPage('Invalid authorization request.'), 400, HTML_HEADERS);
-      const { site: requestedSite, token: rawToken, ...request } = parsed.data;
+        const parsed = consentSubmission.safeParse(form);
+        if (!parsed.success) return c.json(jsonError('Invalid authorization request.'), 400);
+        const { site: requestedSite, token: rawToken, ...request } = parsed.data;
 
-      let redirectHost: string;
-      try {
-        redirectHost = await validateRequest(request);
-      } catch (error) {
-        if (error instanceof GrantError) return c.html(errorPage(error.message), 400, HTML_HEADERS);
-        throw error;
-      }
+        let redirectHost: string;
+        try {
+          redirectHost = await validateRequest(request);
+        } catch (error) {
+          if (error instanceof GrantError) return c.json(jsonError(error.message), 400);
+          throw error;
+        }
 
-      const retry = (reason: string, message: string, site?: string) => {
-        logger.warn(`oauth consent rejected: ${reason}`, { ...c.get('client'), redirectHost, site });
-        return c.html(
-          consentPage({
-            fields: request as Record<string, string>,
-            redirectHost,
-            defaultSite: requestedSite,
-            error: message,
-          }),
-          400,
-          HTML_HEADERS,
+        const retry = (reason: string, message: string, site?: string) => {
+          logger.warn(`oauth consent rejected: ${reason}`, { ...c.get('client'), redirectHost, site });
+          return c.json(jsonError(message), 400);
+        };
+
+        let token: string;
+        try {
+          token = tokenFromInput(rawToken);
+        } catch (error) {
+          if (error instanceof LinkError) return retry('bad_token', error.message);
+          throw error;
+        }
+
+        let site: string;
+        try {
+          site = policy.validate(requestedSite);
+        } catch (error) {
+          if (error instanceof SiteNotAllowedError) return retry('site_not_allowed', error.message);
+          throw error;
+        }
+        try {
+          await new MoodleClient({ baseUrl: site, token, fetch: deps.fetch, logger }).call(
+            MoodleFunction.SiteInfo,
+          );
+        } catch (error) {
+          if (error instanceof MoodleError)
+            return retry('moodle_rejected', 'Moodle rejected this token. Check it and the site.', site);
+          if (error instanceof MoodleTransportError)
+            return retry('moodle_unreachable', 'Could not reach that Moodle site.', site);
+          throw error;
+        }
+
+        const code = await sealer.seal(
+          SealKind.Code,
+          {
+            token,
+            site,
+            clientId: request.client_id,
+            redirectUri: request.redirect_uri,
+            challenge: request.code_challenge,
+          },
+          Lifetime.Code,
         );
-      };
-
-      let token: string;
-      try {
-        token = tokenFromInput(rawToken);
-      } catch (error) {
-        if (error instanceof LinkError) return retry('bad_token', error.message);
-        throw error;
-      }
-
-      let site: string;
-      try {
-        site = policy.validate(requestedSite);
-      } catch (error) {
-        if (error instanceof SiteNotAllowedError) return retry('site_not_allowed', error.message);
-        throw error;
-      }
-      try {
-        await new MoodleClient({ baseUrl: site, token, fetch: deps.fetch, logger }).call(
-          MoodleFunction.SiteInfo,
-        );
-      } catch (error) {
-        if (error instanceof MoodleError)
-          return retry('moodle_rejected', 'Moodle rejected this token. Check it and the site.', site);
-        if (error instanceof MoodleTransportError)
-          return retry('moodle_unreachable', 'Could not reach that Moodle site.', site);
-        throw error;
-      }
-
-      const code = await sealer.seal(
-        SealKind.Code,
-        {
-          token,
-          site,
-          clientId: request.client_id,
-          redirectUri: request.redirect_uri,
-          challenge: request.code_challenge,
-        },
-        Lifetime.Code,
-      );
-      logger.info('oauth code issued', { ...c.get('client'), redirectHost, site });
-      const target = new URL(request.redirect_uri);
-      target.searchParams.set('code', code);
-      if (request.state !== undefined) target.searchParams.set('state', request.state);
-      return c.redirect(target.toString(), 302);
-    })
-    .post(OAUTH_PATHS.token, async (c) => {
-      c.header('Cache-Control', 'no-store');
-      try {
-        const body = tokenRequest.safeParse(await c.req.parseBody());
-        if (!body.success)
-          throw new GrantError('invalid_request', 'Missing or invalid parameters for this grant type');
-        const tokens = await redeem(body.data);
-        logger.info(`oauth token issued (${body.data.grant_type})`, { ...c.get('client') });
-        return c.json(tokens);
-      } catch (error) {
-        if (!(error instanceof GrantError)) throw error;
-        logger.warn(`oauth token rejected: ${error.code}`, { ...c.get('client'), reason: error.message });
-        return c.json({ error: error.code, error_description: error.message }, error.status);
-      }
-    });
+        logger.info('oauth code issued', { ...c.get('client'), redirectHost, site });
+        const target = new URL(request.redirect_uri);
+        target.searchParams.set('code', code);
+        if (request.state !== undefined) target.searchParams.set('state', request.state);
+        const body: AuthorizeSubmitResponse = { redirectUrl: target.toString() };
+        return c.json(body);
+      })
+      .post(OAUTH_PATHS.token, async (c) => {
+        c.header('Cache-Control', 'no-store');
+        try {
+          const body = tokenRequest.safeParse(await c.req.parseBody());
+          if (!body.success)
+            throw new GrantError('invalid_request', 'Missing or invalid parameters for this grant type');
+          const tokens = await redeem(body.data);
+          logger.info(`oauth token issued (${body.data.grant_type})`, { ...c.get('client') });
+          return c.json(tokens);
+        } catch (error) {
+          if (!(error instanceof GrantError)) throw error;
+          logger.warn(`oauth token rejected: ${error.code}`, { ...c.get('client'), reason: error.message });
+          return c.json({ error: error.code, error_description: error.message }, error.status);
+        }
+      })
+  );
 }
 
 const protectedResource = (base: string) => ({
