@@ -28,8 +28,7 @@
     "LOG_LEVEL": "info",
   },
   // Per-PR previews (.github/workflows/preview.yml): `wrangler preview --name pr-<n>`. A Preview inherits nothing
-  // from production, so it repeats what it needs. OAUTH_SECRET comes from the Previews Base configuration:
-  // `wrangler preview base-config secret put OAUTH_SECRET`.
+  // from production, so it repeats what it needs. OAUTH_SECRET is set per Preview by the workflow.
   "previews": {
     "ai": { "binding": "AI" },
     "vars": {
