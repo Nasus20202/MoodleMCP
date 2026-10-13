@@ -172,6 +172,20 @@ describe('secrets stay out of logs and responses', () => {
     });
   });
 
+  it('logs every request at info, including unknown paths', async () => {
+    await world.worker.fetch('/api/nope');
+    await world.worker.fetch('/.env');
+    const lines = await world.worker.logs();
+    expect(lines.find((l) => l.msg.startsWith('GET /api/nope 404'))).toMatchObject({
+      level: 'info',
+      status: 404,
+    });
+    expect(lines.find((l) => l.msg.startsWith('GET /.env 404'))).toMatchObject({
+      level: 'info',
+      status: 404,
+    });
+  });
+
   it('logs why a caller was turned away, with the IP and without credentials', async () => {
     await world.worker.fetch('/mcp', { method: 'POST', body: '{}' });
     const line = (await world.worker.logs()).find((l) => String(l.msg).startsWith('auth rejected'));

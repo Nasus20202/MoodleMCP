@@ -78,7 +78,7 @@ read that user's Moodle until it expires.
 
 ### Logging
 
-Logs are JSON lines (`wrangler tail`, or the dashboard), one per request. Each carries `ip` (Cloudflare's
+Logs are JSON lines (`wrangler tail`, or the dashboard), one per request, including 404s. Each carries `ip` (Cloudflare's
 `CF-Connecting-IP`) and `tokenId`, the first 12 hex characters of the SHA-256 of the credential, so you can follow one
 user without seeing their token. Tokens, OAuth codes, QR keys and request parameters are never logged. The IP address is
 personal data under GDPR, so mind your retention settings.

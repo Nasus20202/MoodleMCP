@@ -12,8 +12,6 @@ export function requestLogger(logger: Logger): MiddlewareHandler<AppEnv> {
     const status = c.res.status;
     const ms = Date.now() - started;
     // The message is what dashboards show in the list view, so it carries the essentials.
-    // Unknown paths are mostly crawlers, so they stay out of the default log level.
-    const log = status === 404 ? 'debug' : 'info';
-    logger[log](`${method} ${path} ${status} ${ms}ms`, { ...c.get('client'), method, path, status, ms });
+    logger.info(`${method} ${path} ${status} ${ms}ms`, { ...c.get('client'), method, path, status, ms });
   };
 }

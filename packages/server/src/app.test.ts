@@ -434,6 +434,20 @@ it('answers unknown paths with a JSON 404', async () => {
   expect(await res.json()).toEqual({ error: 'Not found' });
 });
 
+it('logs unknown paths at info like any other request, without the query string', async () => {
+  const { app, logs } = setup();
+  await app.request('/wp-login.php?secret=1', { headers: { 'CF-Connecting-IP': '203.0.113.8' } });
+  const line = logs.map((l) => JSON.parse(l) as Record<string, unknown>).find((l) => l.status === 404);
+  expect(line).toMatchObject({
+    level: 'info',
+    method: 'GET',
+    path: '/wp-login.php',
+    ip: '203.0.113.8',
+  });
+  expect(line?.msg).toMatch(/^GET \/wp-login\.php 404 \d+ms$/);
+  expect(logs.join('\n')).not.toContain('secret=1');
+});
+
 describe('/api', () => {
   it('GET /api/config returns the default site', async () => {
     const { app } = setup();
