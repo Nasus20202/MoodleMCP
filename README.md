@@ -45,7 +45,8 @@ tool to call next and where its ids come from.
 
 `read_file` takes a `fileurl` from another tool and returns text for PDF (text layer only), DOCX, PPTX, XLSX, HTML and
 plain text; images come back as images. Other types are reported as unreadable unless `raw: true` returns the file as
-base64. Files up to 20 MB, paged with `offset` and `next_offset`. The URL must be on the Moodle site; redirects are not
+base64. Files up to 20 MB, paged with `offset` and `next_offset`; PDFs are extracted only as far as each call reads (at
+most 20 pages) and also take a `page` to continue from (`next_page`). The URL must be on the Moodle site; redirects are not
 followed.
 
 ## Configuration
