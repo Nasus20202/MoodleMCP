@@ -5,6 +5,14 @@
     {
       "matchUpdateTypes": ["minor", "patch"],
       "automerge": true
+    },
+    {
+      "matchPackageNames": ["wrangler"],
+      "postUpgradeTasks": {
+        "commands": ["pnpm install --frozen-lockfile", "pnpm run types"],
+        "fileFilters": ["packages/server/worker-configuration.d.ts"],
+        "executionMode": "branch"
+      }
     }
   ]
 }
