@@ -107,8 +107,8 @@ describe('read_file against a mock Moodle file server', () => {
     expect(json().note).toContain('video/mp4');
   });
 
-  it('returns the unmodified file in raw mode, whatever its type', async () => {
-    const { result } = await read(fileUrl('lecture.mp4', 305), { mode: 'raw' });
+  it('returns the unmodified file as an embedded resource in resource mode', async () => {
+    const { result } = await read(fileUrl('lecture.mp4', 305), { mode: 'resource' });
     expect(result.content[0]?.resource).toEqual({
       uri: 'moodle-file:///lecture.mp4',
       mimeType: 'video/mp4',
@@ -120,8 +120,17 @@ describe('read_file against a mock Moodle file server', () => {
     });
   });
 
-  it('refuses raw files over 20 MB', async () => {
-    const { result } = await read(fileUrl('huge.bin', 307), { mode: 'raw' });
+  it('returns an image as an image block in resource mode', async () => {
+    const { result } = await read(fileUrl('diagram.png', 304), { mode: 'resource' });
+    expect(result.content[0]).toEqual({
+      type: 'image',
+      mimeType: 'image/png',
+      data: Buffer.from(PNG_BYTES).toString('base64'),
+    });
+  });
+
+  it('refuses resource files over 20 MB', async () => {
+    const { result } = await read(fileUrl('huge.bin', 307), { mode: 'resource' });
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain('too large');
   });

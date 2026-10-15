@@ -10,6 +10,7 @@ import type { ToolName } from './names.ts';
 export type ToolContent =
   | { type: 'text'; text: string }
   | { type: 'image'; data: string; mimeType: string }
+  | { type: 'audio'; data: string; mimeType: string }
   | { type: 'resource'; resource: { uri: string; mimeType?: string; blob: string } };
 
 export const jsonContent = (data: unknown): ToolContent[] => [{ type: 'text', text: JSON.stringify(data) }];

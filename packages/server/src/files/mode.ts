@@ -9,8 +9,8 @@ export const ReadMode = {
   Markdown: 'markdown',
   /** Our own parsers: PDFs page by page, images returned as images. */
   Extract: 'extract',
-  /** The unmodified file as base64. */
-  Raw: 'raw',
+  /** The unmodified file as an MCP content block: image, audio or embedded resource by type. */
+  Resource: 'resource',
 } as const;
 export type ReadMode = (typeof ReadMode)[keyof typeof ReadMode];
 
@@ -27,9 +27,9 @@ export interface ModeContext {
   page: number;
 }
 
-/** Picks between markdown and extraction for a file that is not read raw. */
+/** Picks between markdown and extraction for a file that is not returned as a resource. */
 export function chooseMode(
-  requested: Exclude<ReadMode, typeof ReadMode.Raw>,
+  requested: Exclude<ReadMode, typeof ReadMode.Resource>,
   kind: Kind,
   { canConvert, page }: ModeContext,
 ): ModeChoice {

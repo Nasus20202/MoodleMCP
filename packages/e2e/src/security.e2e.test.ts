@@ -14,7 +14,7 @@ const EVERY_TOOL: [string, Record<string, unknown>][] = [
   ['get_course_contents', { course_id: COURSE_ALG }],
   ['get_course_module', { cmid: IDS.cmidAssign }],
   ['read_file', { file_url: FILE_URLS.notes }],
-  ['read_file', { file_url: FILE_URLS.slides, mode: 'raw' }],
+  ['read_file', { file_url: FILE_URLS.slides, mode: 'resource' }],
   ['list_resources', { course_id: COURSE_ALG }],
   ['list_pages', { course_id: COURSE_ALG }],
   ['list_urls', { course_id: COURSE_ALG }],

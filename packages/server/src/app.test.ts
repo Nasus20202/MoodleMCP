@@ -122,9 +122,9 @@ describe('read_file', () => {
     expect(json().note).toContain('video/mp4');
   });
 
-  it('returns the whole file as base64 in raw mode, whatever its type', async () => {
+  it('returns the whole file as base64 in resource mode, whatever its type', async () => {
     const bytes = new Uint8Array([1, 2, 3]);
-    const { body, moodle } = await readFile(serve(bytes, 'video/mp4'), { mode: 'raw' });
+    const { body, moodle } = await readFile(serve(bytes, 'video/mp4'), { mode: 'resource' });
     const [resource, info] = body.result?.content ?? [];
     expect(resource).toEqual({
       type: 'resource',
@@ -134,8 +134,8 @@ describe('read_file', () => {
     expect(moodle.calls).toHaveLength(1);
   });
 
-  it('limits raw files to 20 MB', async () => {
-    const { body } = await readFile(serve(new Uint8Array(21 * 1024 * 1024)), { mode: 'raw' });
+  it('limits resource files to 20 MB', async () => {
+    const { body } = await readFile(serve(new Uint8Array(21 * 1024 * 1024)), { mode: 'resource' });
     expect(body.result?.isError).toBe(true);
     expect(body.result?.content?.[0]?.text).toContain('too large');
   });
