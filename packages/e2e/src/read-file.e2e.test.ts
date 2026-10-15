@@ -129,6 +129,30 @@ describe('read_file against a mock Moodle file server', () => {
     });
   });
 
+  it('lists the files of a ZIP archive and reads one of them', async () => {
+    const url = fileUrl('materials.zip', 310);
+    const listing = (await read(url)).json() as unknown as {
+      format: string;
+      entry_count: number;
+      entries: { path: string; readable: boolean }[];
+    };
+    expect(listing).toMatchObject({ format: 'zip', entry_count: 3 });
+    expect(listing.entries.map((e) => [e.path, e.readable])).toEqual([
+      ['code/Sort.kt', true],
+      ['readme.txt', true],
+      ['clip.mp4', false],
+    ]);
+
+    const entry = (await read(url, { entry: 'code/Sort.kt' })).json();
+    expect(entry).toMatchObject({ filename: 'Sort.kt', readable: true, text: 'fun sort() = Unit' });
+    expect(world.moodle.requests.every((r) => r.method === 'GET')).toBe(true);
+  });
+
+  it('keeps ZIP entry names and contents out of the logs', async () => {
+    await read(fileUrl('materials.zip', 310), { entry: 'code/Sort.kt' });
+    expect(await world.worker.rawLogs()).not.toMatch(/Sort\.kt|readme\.txt|fun sort|Lab materials/);
+  });
+
   it('refuses resource files over 20 MB', async () => {
     const { result } = await read(fileUrl('huge.bin', 307), { mode: 'resource' });
     expect(result.isError).toBe(true);

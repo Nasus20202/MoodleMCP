@@ -1,7 +1,14 @@
 import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 
-import { unzipText } from './zip.ts';
+import {
+  listZip,
+  MAX_ENTRY_BYTES,
+  MAX_LISTED_ENTRIES,
+  unzipEntry,
+  unzipText,
+  ZipEntryTooLargeError,
+} from './zip.ts';
 
 /** Overwrites the uncompressed size the central directory declares for the archive's only entry. */
 function forgeDeclaredSize(zip: Uint8Array, size: number): Uint8Array {
@@ -30,5 +37,56 @@ describe('unzipText', () => {
 
   it('rejects something that is not a zip archive', () => {
     expect(() => unzipText(strToU8('not a zip at all, just some text'), () => true)).toThrow();
+  });
+});
+
+describe('listZip', () => {
+  it('lists files with their sizes and leaves directories out, without inflating anything', () => {
+    const zip = zipSync({
+      'src/': new Uint8Array(),
+      'src/A.kt': strToU8('class A'),
+      'readme.txt': strToU8('hello'),
+    });
+    expect(listZip(zip)).toEqual({
+      entries: [
+        { path: 'src/A.kt', size: 7 },
+        { path: 'readme.txt', size: 5 },
+      ],
+      total: 2,
+    });
+  });
+
+  it('stops listing at the limit but still counts every file', () => {
+    const files = Object.fromEntries(
+      Array.from({ length: MAX_LISTED_ENTRIES + 5 }, (_, i) => [`f${i}.txt`, strToU8('x')]),
+    );
+    const listing = listZip(zipSync(files));
+    expect(listing.entries).toHaveLength(MAX_LISTED_ENTRIES);
+    expect(listing.total).toBe(MAX_LISTED_ENTRIES + 5);
+  });
+
+  it('rejects something that is not a zip archive', () => {
+    expect(() => listZip(strToU8('not a zip at all, just some text'))).toThrow();
+  });
+});
+
+describe('unzipEntry', () => {
+  const zip = zipSync({ 'a/b.txt': strToU8('bee'), 'c.txt': strToU8('sea') });
+
+  it('inflates only the entry asked for, matched by its exact path', () => {
+    expect(new TextDecoder().decode(unzipEntry(zip, 'a/b.txt'))).toBe('bee');
+    expect(unzipEntry(zip, 'b.txt')).toBeUndefined();
+    expect(unzipEntry(zip, '../c.txt')).toBeUndefined();
+    expect(unzipEntry(zip, 'a/')).toBeUndefined();
+  });
+
+  it('refuses an entry that declares more than the limit, before inflating it', () => {
+    const big = zipSync({ 'x.bin': new Uint8Array(MAX_ENTRY_BYTES + 1) });
+    expect(() => unzipEntry(big, 'x.bin')).toThrow(ZipEntryTooLargeError);
+  });
+
+  it('never inflates past the size an entry declares, even a forged one', () => {
+    const bomb = forgeDeclaredSize(zipSync({ 'x.bin': new Uint8Array(MAX_ENTRY_BYTES - 1) }), 10);
+    expect(unzipEntry(bomb, 'x.bin')).toHaveLength(10);
   });
 });
