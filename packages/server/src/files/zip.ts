@@ -25,6 +25,9 @@ export const MAX_LISTED_ENTRIES = 500;
 /** The most one entry may inflate to when it is read on its own. */
 export const MAX_ENTRY_BYTES = 20 * 1024 * 1024;
 
+/** Longest entry path listed, which is also the longest `entry` argument that could ask for one. */
+export const MAX_ENTRY_PATH_LENGTH = 1024;
+
 export interface ZipEntry {
   path: string;
   /** Uncompressed size as the archive declares it. */
@@ -42,7 +45,10 @@ export class ZipEntryTooLargeError extends Error {
   override name = 'ZipEntryTooLargeError';
 }
 
-/** Lists the files of an archive without inflating any of them. Directories are left out. */
+/**
+ * Lists the files of an archive without inflating any of them. Directories are left out, and so are files whose
+ * path is too long to ask for, though they still count towards `total`.
+ */
 export function listZip(bytes: Uint8Array): ZipListing {
   const entries: ZipEntry[] = [];
   let total = 0;
@@ -50,7 +56,9 @@ export function listZip(bytes: Uint8Array): ZipListing {
     filter: (file) => {
       if (!file.name.endsWith('/')) {
         total++;
-        if (entries.length < MAX_LISTED_ENTRIES) entries.push({ path: file.name, size: file.originalSize });
+        if (entries.length < MAX_LISTED_ENTRIES && file.name.length <= MAX_ENTRY_PATH_LENGTH) {
+          entries.push({ path: file.name, size: file.originalSize });
+        }
       }
       return false;
     },
@@ -61,15 +69,19 @@ export function listZip(bytes: Uint8Array): ZipListing {
 /**
  * Inflates the one entry called `path`, or returns undefined when there is none. The name is only compared,
  * never used as a path. The size is checked before inflating, and fflate never inflates past the declared
- * size, so a forged header cannot get around the limit.
+ * size, so a forged header cannot get around the limit. When several entries share the name only the first is
+ * inflated, so repeating one name cannot multiply the work.
  */
 export function unzipEntry(bytes: Uint8Array, path: string): Uint8Array | undefined {
+  let found = false;
   const files = unzipSync(bytes, {
     filter: (file) => {
-      if (file.name !== path || file.name.endsWith('/')) return false;
+      if (found || file.name !== path || file.name.endsWith('/')) return false;
       if (file.originalSize > MAX_ENTRY_BYTES) throw new ZipEntryTooLargeError('Entry is too large to read');
+      found = true;
       return true;
     },
   });
-  return files[path];
+  // The result is a plain object, so a missing entry called "constructor" would otherwise be found.
+  return found ? files[path] : undefined;
 }

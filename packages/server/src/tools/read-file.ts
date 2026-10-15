@@ -241,7 +241,7 @@ function listArchive({ logger }: ToolContext, file: DownloadedFile): ToolContent
     note:
       'To read one of the files, call read_file again with `entry` set to its path. Entries marked ' +
       'readable: false cannot be turned into text.' +
-      (truncated ? ` Only the first ${entries.length} entries are listed.` : ''),
+      (truncated ? ` Not every entry is listed: ${entries.length} of ${listing.total} are shown.` : ''),
     entries,
   });
 }

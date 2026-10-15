@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   listZip,
   MAX_ENTRY_BYTES,
+  MAX_ENTRY_PATH_LENGTH,
   MAX_LISTED_ENTRIES,
   unzipEntry,
   unzipText,
@@ -88,5 +89,40 @@ describe('unzipEntry', () => {
   it('never inflates past the size an entry declares, even a forged one', () => {
     const bomb = forgeDeclaredSize(zipSync({ 'x.bin': new Uint8Array(MAX_ENTRY_BYTES - 1) }), 10);
     expect(unzipEntry(bomb, 'x.bin')).toHaveLength(10);
+  });
+});
+
+describe('archives with hostile names', () => {
+  /** Renames every `from` in the archive to `to` (same length), in both the local and central headers. */
+  function rename(zip: Uint8Array, from: string, to: string): Uint8Array {
+    const needle = strToU8(from);
+    for (let at = 0; at < zip.length - needle.length; at++) {
+      if (needle.every((byte, i) => zip[at + i] === byte)) zip.set(strToU8(to), at);
+    }
+    return zip;
+  }
+
+  it('reads the first of several entries with the same name, and only that one', () => {
+    const zip = rename(
+      zipSync({ 'a.txt': strToU8('first'), 'b.txt': strToU8('second') }, { level: 0 }),
+      'b.txt',
+      'a.txt',
+    );
+    expect(listZip(zip).entries.map((e) => e.path)).toEqual(['a.txt', 'a.txt']);
+    expect(new TextDecoder().decode(unzipEntry(zip, 'a.txt'))).toBe('first');
+  });
+
+  it('does not find an entry that is only a property of plain objects', () => {
+    const zip = zipSync({ 'a.txt': strToU8('a') });
+    for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      expect(unzipEntry(zip, name)).toBeUndefined();
+    }
+  });
+
+  it('counts but does not list entries whose path is too long to ask for', () => {
+    const long = 'd/'.repeat(MAX_ENTRY_PATH_LENGTH) + 'f.txt';
+    const listing = listZip(zipSync({ [long]: strToU8('x'), 'short.txt': strToU8('y') }));
+    expect(listing.entries.map((e) => e.path)).toEqual(['short.txt']);
+    expect(listing.total).toBe(2);
   });
 });

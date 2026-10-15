@@ -182,7 +182,10 @@ export async function readFile(
     case 'text':
       return { kind: 'text', format: extensionOf(file.filename) || 'text', text: decodeUtf8(file.bytes) };
     case 'zip':
-      return { kind: 'unsupported', reason: 'ZIP archives are listed, not extracted, by read_file.' };
+      return {
+        kind: 'unsupported',
+        reason: 'ZIP archives are handled by read_file itself and never reach the extractors.',
+      };
     case null:
       return { kind: 'unsupported', reason: unsupportedReason(file) };
   }
