@@ -12,7 +12,6 @@ export interface ToolResult {
     text?: string;
     data?: string;
     mimeType?: string;
-    resource?: { uri: string; mimeType?: string; blob: string };
   }[];
 }
 

@@ -109,15 +109,21 @@ describe('read_file against a mock Moodle file server', () => {
 
   it('returns the unmodified file in raw mode, whatever its type', async () => {
     const { result } = await read(fileUrl('lecture.mp4', 305), { mode: 'raw' });
-    expect(result.content[0]?.resource).toEqual({
-      uri: 'moodle-file:///lecture.mp4',
-      mimeType: 'video/mp4',
-      blob: Buffer.from([0, 0, 0, 24, 102, 116, 121, 112]).toString('base64'),
-    });
-    expect(JSON.parse(result.content[1]?.text ?? '{}')).toMatchObject({
+    expect(result.content).toHaveLength(1);
+    expect(JSON.parse(result.content[0]?.text ?? '{}')).toEqual({
       filename: 'lecture.mp4',
+      mime_type: 'video/mp4',
       size_bytes: 8,
+      encoding: 'base64',
+      note: 'The unmodified file is in `base64`.',
+      base64: Buffer.from([0, 0, 0, 24, 102, 116, 121, 112]).toString('base64'),
     });
+  });
+
+  it('returns a PDF in raw mode as text, since clients reject application/pdf resources', async () => {
+    const { result, json } = await read(FILE_URLS.slides, { mode: 'raw' });
+    expect(result.content.map((block) => block.type)).toEqual(['text']);
+    expect(json()).toMatchObject({ filename: 'slides.pdf', mime_type: 'application/pdf' });
   });
 
   it('refuses raw files over 20 MB', async () => {

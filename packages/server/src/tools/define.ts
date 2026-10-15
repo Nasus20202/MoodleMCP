@@ -7,10 +7,7 @@ import type { MoodleFunction } from '../moodle/functions.ts';
 import type { ToolName } from './names.ts';
 
 /** One block of a tool result, as MCP clients receive it. */
-export type ToolContent =
-  | { type: 'text'; text: string }
-  | { type: 'image'; data: string; mimeType: string }
-  | { type: 'resource'; resource: { uri: string; mimeType?: string; blob: string } };
+export type ToolContent = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string };
 
 export const jsonContent = (data: unknown): ToolContent[] => [{ type: 'text', text: JSON.stringify(data) }];
 

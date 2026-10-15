@@ -27,7 +27,7 @@ const input = z.object({
       'auto (default): Markdown for PDF, Word, Excel and HTML when available, otherwise extracted text; ' +
         'markdown: convert to Markdown (keeps headings and tables; for an image, a written description); ' +
         'extract: our own text extraction, PDFs page by page and images as images; ' +
-        'raw: the unmodified file as base64, any type, ignoring offset and max_chars',
+        'raw: the unmodified file as base64 (in the JSON; an image as an image), any type, ignoring offset and max_chars',
     ),
   offset: z
     .number()
@@ -79,17 +79,21 @@ export const readFileTool = defineCustomTool({
 async function readRaw({ client, logger }: ToolContext, { file_url }: Input): Promise<ToolContent[]> {
   const file = await client.download(file_url, MAX_FILE_BYTES);
   logger.info('file returned raw', { mime: file.mimeType, bytes: file.bytes.byteLength });
-  return [
-    {
-      type: 'resource',
-      resource: {
-        uri: `moodle-file:///${encodeURIComponent(file.filename)}`,
-        mimeType: file.mimeType || 'application/octet-stream',
-        blob: toBase64(file.bytes),
-      },
-    },
-    ...jsonContent({ ...describeFile(file), note: 'The unmodified file is attached as base64.' }),
-  ];
+  const base64 = toBase64(file.bytes);
+  // Many clients reject embedded resources of types like application/pdf, so only images get their own
+  // block; every other type travels as base64 inside the JSON text, which all clients accept.
+  if (file.mimeType.startsWith('image/')) {
+    return [
+      { type: 'image', data: base64, mimeType: file.mimeType },
+      ...jsonContent({ ...describeFile(file), note: 'The unmodified image is attached.' }),
+    ];
+  }
+  return jsonContent({
+    ...describeFile(file),
+    encoding: 'base64',
+    note: 'The unmodified file is in `base64`.',
+    base64,
+  });
 }
 
 async function readText(context: ToolContext, args: Input): Promise<ToolContent[]> {

@@ -125,12 +125,14 @@ describe('read_file', () => {
   it('returns the whole file as base64 in raw mode, whatever its type', async () => {
     const bytes = new Uint8Array([1, 2, 3]);
     const { body, moodle } = await readFile(serve(bytes, 'video/mp4'), { mode: 'raw' });
-    const [resource, info] = body.result?.content ?? [];
-    expect(resource).toEqual({
-      type: 'resource',
-      resource: { uri: 'moodle-file:///notes.txt', mimeType: 'video/mp4', blob: 'AQID' },
+    expect(body.result?.content).toHaveLength(1);
+    expect(JSON.parse(body.result?.content?.[0]?.text ?? '{}')).toMatchObject({
+      filename: 'notes.txt',
+      mime_type: 'video/mp4',
+      size_bytes: 3,
+      encoding: 'base64',
+      base64: 'AQID',
     });
-    expect(JSON.parse(info?.text ?? '{}')).toMatchObject({ filename: 'notes.txt', size_bytes: 3 });
     expect(moodle.calls).toHaveLength(1);
   });
 
