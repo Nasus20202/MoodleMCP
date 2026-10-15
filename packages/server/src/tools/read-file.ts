@@ -21,13 +21,14 @@ const describeFile = (file: DownloadedFile) => ({
 const input = z.object({
   file_url: z.string().min(1).describe('`fileurl` of a file, copied unchanged from another tool'),
   mode: z
-    .enum([ReadMode.Auto, ReadMode.Markdown, ReadMode.Extract, ReadMode.Raw])
+    .enum([ReadMode.Auto, ReadMode.Markdown, ReadMode.Extract, ReadMode.Resource])
     .default(ReadMode.Auto)
     .describe(
       'auto (default): Markdown for PDF, Word, Excel and HTML when available, otherwise extracted text; ' +
         'markdown: convert to Markdown (keeps headings and tables; for an image, a written description); ' +
         'extract: our own text extraction, PDFs page by page and images as images; ' +
-        'raw: the unmodified file as base64 (in the JSON; an image as an image), any type, ignoring offset and max_chars',
+        'resource: the unmodified file, any type, ignoring offset and max_chars: an image block for images, ' +
+        'an audio block for audio, an embedded resource for the rest (not every client accepts those)',
     ),
   offset: z
     .number()
@@ -72,28 +73,25 @@ export const readFileTool = defineCustomTool({
     'mode raw to get the file, otherwise tell the user and give them the link. Files up to 20 MB.',
   input,
   async run(context, args) {
-    return args.mode === ReadMode.Raw ? readRaw(context, args) : readText(context, args);
+    return args.mode === ReadMode.Resource ? readResource(context, args) : readText(context, args);
   },
 });
 
-async function readRaw({ client, logger }: ToolContext, { file_url }: Input): Promise<ToolContent[]> {
+async function readResource({ client, logger }: ToolContext, { file_url }: Input): Promise<ToolContent[]> {
   const file = await client.download(file_url, MAX_FILE_BYTES);
-  logger.info('file returned raw', { mime: file.mimeType, bytes: file.bytes.byteLength });
-  const base64 = toBase64(file.bytes);
-  // Many clients reject embedded resources of types like application/pdf, so only images get their own
-  // block; every other type travels as base64 inside the JSON text, which all clients accept.
-  if (file.mimeType.startsWith('image/')) {
-    return [
-      { type: 'image', data: base64, mimeType: file.mimeType },
-      ...jsonContent({ ...describeFile(file), note: 'The unmodified image is attached.' }),
-    ];
-  }
-  return jsonContent({
-    ...describeFile(file),
-    encoding: 'base64',
-    note: 'The unmodified file is in `base64`.',
-    base64,
-  });
+  logger.info('file returned as resource', { mime: file.mimeType, bytes: file.bytes.byteLength });
+  const data = toBase64(file.bytes);
+  const mimeType = file.mimeType || 'application/octet-stream';
+  const note = jsonContent({ ...describeFile(file), note: 'The unmodified file is attached.' });
+  if (mimeType.startsWith('image/')) return [{ type: 'image', data, mimeType }, ...note];
+  if (mimeType.startsWith('audio/')) return [{ type: 'audio', data, mimeType }, ...note];
+  return [
+    {
+      type: 'resource',
+      resource: { uri: `moodle-file:///${encodeURIComponent(file.filename)}`, mimeType, blob: data },
+    },
+    ...note,
+  ];
 }
 
 async function readText(context: ToolContext, args: Input): Promise<ToolContent[]> {
@@ -110,7 +108,7 @@ async function readText(context: ToolContext, args: Input): Promise<ToolContent[
     });
   }
 
-  const requested = args.mode === ReadMode.Raw ? ReadMode.Auto : args.mode;
+  const requested = args.mode === ReadMode.Resource ? ReadMode.Auto : args.mode;
   let choice: ModeChoice = chooseMode(requested, format, {
     canConvert: markdown !== undefined,
     page: args.page,

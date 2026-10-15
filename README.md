@@ -52,7 +52,7 @@ the Moodle site; redirects are not followed. Its `mode` picks how a file is read
 | `auto`     | default: `markdown` for PDF, DOCX, XLSX and HTML when the AI binding is there, `extract` for everything else |
 | `markdown` | Workers AI [`toMarkdown`][tomarkdown]: no Worker CPU, keeps headings and tables; an image gets a description |
 | `extract`  | the Worker's own parsers; PDFs are read only as far as each call goes (at most 20 pages) and take a `page`   |
-| `raw`      | the unmodified file as base64, any type                                                                      |
+| `resource` | the unmodified file: an image, audio or embedded resource block by type                                      |
 
 If a conversion fails (or the daily Workers AI allowance runs out), `read_file` falls back to `extract` and says so.
 Images are only described when `markdown` is asked for, because a description is a summary and uses the allowance;
