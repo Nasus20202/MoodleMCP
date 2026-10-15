@@ -140,9 +140,13 @@ describe('readFile', () => {
 
 describe('classify', () => {
   it.each([
-    ['a.zip', 'application/zip', null],
+    ['a.zip', 'application/zip', 'zip'],
+    ['a.zip', 'application/octet-stream', 'zip'],
+    ['a.kt', 'application/octet-stream', 'text'],
+    ['a.svg', 'image/svg+xml', 'text'],
     ['a.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'xlsx'],
-    ['a.zip', 'application/x-zip', null],
+    ['a.zip', 'application/x-zip-compressed', 'zip'],
+    ['a.7z', 'application/x-7z-compressed', null],
     ['a.avi', 'video/x-ms-wm', null],
     ['a.pdf', 'application/pdf', 'pdf'],
     ['a.PDF', '', 'pdf'],

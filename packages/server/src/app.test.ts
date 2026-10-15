@@ -1,4 +1,5 @@
 import type { ConfigResponse, ErrorResponse, ExchangeResponse, ToolsResponse } from '@moodle-mcp/shared';
+import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 
 import { type AppDeps, createApp } from './app.ts';
@@ -132,6 +133,79 @@ describe('read_file', () => {
     });
     expect(JSON.parse(info?.text ?? '{}')).toMatchObject({ filename: 'notes.txt', size_bytes: 3 });
     expect(moodle.calls).toHaveLength(1);
+  });
+
+  describe('ZIP archives', () => {
+    const inner = zipSync({ 'deep.txt': strToU8('deep') });
+    const archive = () =>
+      zipSync({
+        'src/': new Uint8Array(),
+        'src/Main.kt': strToU8('fun main() = println("hi")'),
+        'notes.txt': strToU8('zip notes'),
+        'clip.mp4': new Uint8Array([0, 0, 0, 24]),
+        'inner.zip': inner,
+      });
+
+    it('lists the files of an archive and says which can be read', async () => {
+      const { json, moodle } = await readFile(serve(archive(), 'application/zip'));
+      expect(json()).toMatchObject({
+        filename: 'notes.txt',
+        readable: true,
+        format: 'zip',
+        entry_count: 4,
+      });
+      expect(json().entries).toEqual([
+        { path: 'src/Main.kt', size_bytes: 26, type: null, readable: true },
+        { path: 'notes.txt', size_bytes: 9, type: null, readable: true },
+        { path: 'clip.mp4', size_bytes: 4, type: null, readable: false },
+        { path: 'inner.zip', size_bytes: inner.length, type: 'application/zip', readable: false },
+      ]);
+      expect(moodle.calls).toHaveLength(1);
+    });
+
+    it('reads one entry like a file of its own, with paging', async () => {
+      const { json } = await readFile(serve(archive(), 'application/zip'), { entry: 'src/Main.kt' });
+      expect(json()).toMatchObject({
+        filename: 'Main.kt',
+        readable: true,
+        format: 'kt',
+        text: 'fun main() = println("hi")',
+        next_offset: null,
+      });
+      expect(json().note).toContain('src/Main.kt');
+    });
+
+    it('explains instead of failing for a missing, unreadable or nested entry', async () => {
+      const respond = serve(archive(), 'application/zip');
+      const missing = (await readFile(respond, { entry: 'nope.txt' })).json();
+      expect(missing).toMatchObject({ readable: false });
+      expect(missing.note).toContain('no entry');
+
+      const media = (await readFile(respond, { entry: 'clip.mp4' })).json();
+      expect(media).toMatchObject({ filename: 'clip.mp4', readable: false });
+
+      const nested = (await readFile(respond, { entry: 'inner.zip' })).json();
+      expect(nested).toMatchObject({ readable: false });
+      expect(nested.note).toContain('inside an archive');
+    });
+
+    it('reports a corrupt archive without crashing', async () => {
+      const { json, body } = await readFile(serve('PK not really', 'application/zip'));
+      expect(body.result?.isError).toBeUndefined();
+      expect(json()).toMatchObject({ readable: false });
+    });
+
+    it('says when entry is given for a file that is not an archive', async () => {
+      const { json } = await readFile(serve('plain'), { entry: 'a.txt' });
+      expect(json()).toMatchObject({ text: 'plain' });
+      expect(json().note).toContain('only used for ZIP');
+    });
+
+    it('never logs entry names or contents', async () => {
+      const { logs } = await readFile(serve(archive(), 'application/zip'), { entry: 'src/Main.kt' });
+      const all = logs.join('\n');
+      expect(all).not.toMatch(/Main\.kt|notes\.txt|println|zip notes/);
+    });
   });
 
   it('limits resource files to 20 MB', async () => {

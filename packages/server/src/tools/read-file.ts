@@ -4,6 +4,7 @@ import { classifyConversionFailure, conversionFailureNote, toMarkdown } from '..
 import { chooseMode, type ModeChoice, ReadMode } from '../files/mode.ts';
 import { MAX_PAGES_PER_CALL } from '../files/pdf.ts';
 import { classify, effectiveType, pageText, readFile, toBase64, unsupportedReason } from '../files/read.ts';
+import { listZip, MAX_ENTRY_BYTES, unzipEntry, ZipEntryTooLargeError } from '../files/zip.ts';
 import type { DownloadedFile } from '../moodle/client.ts';
 import { defineCustomTool, jsonContent, type ToolContent, type ToolContext } from './define.ts';
 import { ToolName } from './names.ts';
@@ -38,6 +39,15 @@ const input = z.object({
     .describe(
       'character to start from; use `next_offset` from the previous call (for PDFs, counted from `page`)',
     ),
+  entry: z
+    .string()
+    .min(1)
+    .max(1024)
+    .optional()
+    .describe(
+      'ZIP only: path of one file inside the archive, copied unchanged from the `entries` of a previous call ' +
+        'without `entry`; that file is then read like any other, so `offset`, `page` and `max_chars` apply to it',
+    ),
   page: z
     .number()
     .int()
@@ -69,8 +79,10 @@ export const readFileTool = defineCustomTool({
     'set to that value (and `page` to `next_page` when there is one). In extract mode PDFs are read a few ' +
     `pages at a time (at most ${MAX_PAGES_PER_CALL} per call), each page headed "--- Page N ---"; to jump to ` +
     'a page, pass `page`. Images are returned as images unless `mode` is markdown. Scanned PDFs have no ' +
-    'text layer and come back empty. Other types (archives, audio, video) cannot be read as text: use ' +
-    'mode raw to get the file, otherwise tell the user and give them the link. Files up to 20 MB.',
+    'text layer and come back empty. A ZIP archive comes back as a list of its `entries`; call again with ' +
+    '`entry` set to one of their paths to read that file. Other types (audio, video) cannot be read as ' +
+    'text: use mode resource to get the file, otherwise tell the user and give them the link. Files up to ' +
+    '20 MB.',
   input,
   async run(context, args) {
     return args.mode === ReadMode.Resource ? readResource(context, args) : readText(context, args);
@@ -95,8 +107,31 @@ async function readResource({ client, logger }: ToolContext, { file_url }: Input
 }
 
 async function readText(context: ToolContext, args: Input): Promise<ToolContent[]> {
-  const { client, logger, markdown } = context;
-  const file = await client.download(args.file_url, MAX_FILE_BYTES, (meta) => classify(meta) !== null);
+  const file = await context.client.download(
+    args.file_url,
+    MAX_FILE_BYTES,
+    (meta) => classify(meta) !== null,
+  );
+  return readDocument(context, file, args, {});
+}
+
+/** Where a file being read came from, when it is an entry of an archive. */
+interface Origin {
+  /** Said before any other note, so the model knows what it is looking at. */
+  note?: string | undefined;
+  /** Archives inside archives are not opened. */
+  nested?: boolean;
+}
+
+const joinNotes = (...notes: (string | undefined)[]) => notes.filter(Boolean).join(' ') || undefined;
+
+async function readDocument(
+  context: ToolContext,
+  file: DownloadedFile,
+  args: Input,
+  origin: Origin,
+): Promise<ToolContent[]> {
+  const { logger, markdown } = context;
   const format = classify(file);
   if (file.skipped || format === null) {
     logger.info('file not readable', { mime: file.mimeType, reason: 'unsupported type' });
@@ -104,10 +139,27 @@ async function readText(context: ToolContext, args: Input): Promise<ToolContent[
       filename: file.filename,
       mime_type: file.mimeType,
       readable: false,
-      note: unsupportedReason(file),
+      note: joinNotes(origin.note, unsupportedReason(file)),
     });
   }
+  if (format === 'zip') {
+    if (origin.nested) {
+      logger.info('file not readable', { mime: file.mimeType, reason: 'nested archive' });
+      return jsonContent({
+        ...describeFile(file),
+        readable: false,
+        note: joinNotes(origin.note, 'An archive inside an archive is not opened.'),
+      });
+    }
+    return args.entry === undefined ? listArchive(context, file) : readEntry(context, file, args, args.entry);
+  }
 
+  if (args.entry !== undefined && !origin.nested) {
+    origin = {
+      ...origin,
+      note: joinNotes(origin.note, '`entry` is only used for ZIP archives and was ignored.'),
+    };
+  }
   const requested = args.mode === ReadMode.Resource ? ReadMode.Auto : args.mode;
   let choice: ModeChoice = chooseMode(requested, format, {
     canConvert: markdown !== undefined,
@@ -126,7 +178,12 @@ async function readText(context: ToolContext, args: Input): Promise<ToolContent[
         tokens,
         ms: Date.now() - started,
       });
-      return textResult(file, args, { format, mode: ReadMode.Markdown, text });
+      return textResult(file, args, {
+        format,
+        mode: ReadMode.Markdown,
+        text,
+        ...(origin.note && { note: origin.note }),
+      });
     } catch (error) {
       // Quota spent, an outage, a timeout or a file it cannot handle: our own parsers still have a go.
       // Only a fixed reason code is logged and returned: Workers AI's message can name the file.
@@ -142,8 +199,102 @@ async function readText(context: ToolContext, args: Input): Promise<ToolContent[
       choice = { mode: ReadMode.Extract, note: conversionFailureNote(reason) };
     }
   }
-  return extract(context, file, format, args, choice.note);
+  return extract(context, file, format, args, joinNotes(origin.note, choice.note));
 }
+
+/** What an archive holds, without inflating any of it. */
+function listArchive({ logger }: ToolContext, file: DownloadedFile): ToolContent[] {
+  let listing;
+  try {
+    listing = listZip(file.bytes);
+  } catch (error) {
+    logger.warn('file parse failed', {
+      format: 'zip',
+      mime: file.mimeType,
+      bytes: file.bytes.byteLength,
+      error: error instanceof Error ? error.name : 'unknown',
+    });
+    return jsonContent({
+      ...describeFile(file),
+      readable: false,
+      note: 'The archive could not be opened: it may be corrupt or in an unusual format.',
+    });
+  }
+  logger.info('archive listed', { bytes: file.bytes.byteLength, entries: listing.total });
+  const entries = listing.entries.map(({ path, size }) => {
+    const entry = { filename: basename(path), mimeType: '' };
+    const kind = classify(entry);
+    return {
+      path,
+      size_bytes: size,
+      type: effectiveType(entry) || null,
+      readable: kind !== null && kind !== 'zip',
+    };
+  });
+  const truncated = listing.total > entries.length;
+  return jsonContent({
+    ...describeFile(file),
+    readable: true,
+    format: 'zip',
+    entry_count: listing.total,
+    ...(truncated && { truncated: true }),
+    note:
+      'To read one of the files, call read_file again with `entry` set to its path. Entries marked ' +
+      'readable: false cannot be turned into text.' +
+      (truncated ? ` Not every entry is listed: ${entries.length} of ${listing.total} are shown.` : ''),
+    entries,
+  });
+}
+
+/** One file out of an archive, read as if it had been downloaded on its own. */
+async function readEntry(
+  context: ToolContext,
+  archive: DownloadedFile,
+  args: Input,
+  path: string,
+): Promise<ToolContent[]> {
+  const { logger } = context;
+  const unreadable = (note: string) => jsonContent({ ...describeFile(archive), readable: false, note });
+
+  let bytes;
+  try {
+    bytes = unzipEntry(archive.bytes, path);
+  } catch (error) {
+    if (error instanceof ZipEntryTooLargeError) {
+      logger.info('file not readable', { mime: archive.mimeType, reason: 'entry too large' });
+      return unreadable(
+        `That entry is larger than ${MAX_ENTRY_BYTES / 1024 / 1024} MB, which is too big to read.`,
+      );
+    }
+    logger.warn('file parse failed', {
+      format: 'zip',
+      mime: archive.mimeType,
+      bytes: archive.bytes.byteLength,
+      error: error instanceof Error ? error.name : 'unknown',
+    });
+    return unreadable('That entry could not be read: the archive may be corrupt or password-protected.');
+  }
+  if (bytes === undefined) {
+    logger.info('file not readable', { mime: archive.mimeType, reason: 'no such entry' });
+    return unreadable(
+      'The archive has no entry with that path. Call read_file without `entry` to list them.',
+    );
+  }
+  logger.info('archive entry read', { bytes: bytes.byteLength });
+  const filename = basename(path);
+  const entry: DownloadedFile = {
+    bytes,
+    filename,
+    mimeType: effectiveType({ filename, mimeType: '' }),
+    skipped: false,
+  };
+  return readDocument(context, entry, args, {
+    nested: true,
+    note: `Read from ${archive.filename}: ${path}.`,
+  });
+}
+
+const basename = (path: string) => path.slice(path.lastIndexOf('/') + 1);
 
 interface TextReading {
   format: string;

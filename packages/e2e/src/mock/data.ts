@@ -125,6 +125,15 @@ export const FILES: Record<string, MockFile> = {
     body: new Uint8Array(21 * 1024 * 1024),
     type: 'application/octet-stream',
   },
+  '/webservice/pluginfile.php/310/mod_resource/content/1/materials.zip': {
+    course: COURSE_ALG,
+    body: zipSync({
+      'code/Sort.kt': strToU8('fun sort() = Unit'),
+      'readme.txt': strToU8('Lab materials'),
+      'clip.mp4': new Uint8Array([0, 0, 0, 24]),
+    }),
+    type: 'application/zip',
+  },
   '/webservice/pluginfile.php/308/mod_resource/content/1/long.txt': {
     course: COURSE_ALG,
     body: 'a'.repeat(2500) + 'b'.repeat(2500),

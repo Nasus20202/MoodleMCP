@@ -5,6 +5,12 @@ import { htmlToText } from './text.ts';
 /** Largest image handed to the model as an image rather than described. */
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 
+const ZIP_TYPES: ReadonlySet<string> = new Set([
+  'application/zip',
+  'application/x-zip',
+  'application/x-zip-compressed',
+]);
+
 const IMAGE_TYPES: ReadonlySet<string> = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
 const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
@@ -19,6 +25,7 @@ const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   jpeg: 'image/jpeg',
   gif: 'image/gif',
   webp: 'image/webp',
+  zip: 'application/zip',
 };
 
 const DOCX = MIME_BY_EXTENSION.docx;
@@ -70,6 +77,24 @@ const TEXT_EXTENSIONS: ReadonlySet<string> = new Set([
   'srt',
   'vtt',
   'rtf',
+  'kt',
+  'kts',
+  'swift',
+  'gradle',
+  'scala',
+  'dart',
+  'lua',
+  'pl',
+  'jsx',
+  'tsx',
+  'vue',
+  'css',
+  'svg',
+  'properties',
+  'cfg',
+  'conf',
+  'bat',
+  'ps1',
 ]);
 
 export interface ReadOptions {
@@ -96,7 +121,7 @@ export function effectiveType({ mimeType, filename }: Pick<DownloadedFile, 'mime
 
 const decodeUtf8 = (bytes: Uint8Array) => new TextDecoder('utf-8').decode(bytes);
 
-export type Kind = 'pdf' | 'docx' | 'pptx' | 'xlsx' | 'html' | 'image' | 'text';
+export type Kind = 'pdf' | 'docx' | 'pptx' | 'xlsx' | 'html' | 'image' | 'text' | 'zip';
 
 /** What we can do with a file, judged from its metadata alone (so unreadable files are never downloaded). */
 export function classify(meta: Pick<DownloadedFile, 'mimeType' | 'filename'>): Kind | null {
@@ -107,6 +132,7 @@ export function classify(meta: Pick<DownloadedFile, 'mimeType' | 'filename'>): K
   if (type === XLSX) return 'xlsx';
   if (type === 'text/html' || type === 'application/xhtml+xml') return 'html';
   if (IMAGE_TYPES.has(type)) return 'image';
+  if (ZIP_TYPES.has(type)) return 'zip';
   if (type.startsWith('text/') || TEXT_APPLICATION_TYPES.has(type)) return 'text';
   // Moodle labels much source code with odd types, so trust the extension, but never over media.
   const media = type.startsWith('video/') || type.startsWith('audio/');
@@ -114,7 +140,7 @@ export function classify(meta: Pick<DownloadedFile, 'mimeType' | 'filename'>): K
 }
 
 export const unsupportedReason = (meta: Pick<DownloadedFile, 'mimeType' | 'filename'>) =>
-  `Cannot extract text from ${effectiveType(meta) || 'this file type'}. Supported: PDF, DOCX, PPTX, XLSX, HTML, images and plain-text files.`;
+  `Cannot extract text from ${effectiveType(meta) || 'this file type'}. Supported: PDF, DOCX, PPTX, XLSX, HTML, images, plain-text files and ZIP archives.`;
 
 /**
  * Extracts what a model can read from a downloaded file. The parsers (PDF.js, fflate) are large and most
@@ -155,6 +181,11 @@ export async function readFile(
       return { kind: 'image', mimeType: effectiveType(file), base64: toBase64(file.bytes) };
     case 'text':
       return { kind: 'text', format: extensionOf(file.filename) || 'text', text: decodeUtf8(file.bytes) };
+    case 'zip':
+      return {
+        kind: 'unsupported',
+        reason: 'ZIP archives are handled by read_file itself and never reach the extractors.',
+      };
     case null:
       return { kind: 'unsupported', reason: unsupportedReason(file) };
   }

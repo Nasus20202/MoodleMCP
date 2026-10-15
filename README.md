@@ -44,8 +44,9 @@ tool to call next and where its ids come from.
 | Activity  | `get_notifications`                                                                                         |
 
 `read_file` takes a `fileurl` from another tool and returns text for PDF (text layer only), DOCX, PPTX, XLSX, HTML and
-plain text; images come back as images. Files up to 20 MB, paged with `offset` and `next_offset`. The URL must be on
-the Moodle site; redirects are not followed. Its `mode` picks how a file is read:
+plain text; images come back as images. A ZIP archive comes back as a list of its files, and passing one of their paths
+as `entry` reads that file like any other (archives inside archives are not opened). Files up to 20 MB, paged with
+`offset` and `next_offset`. The URL must be on the Moodle site; redirects are not followed. Its `mode` picks how a file is read:
 
 | Mode       | What it does                                                                                                 |
 | ---------- | ------------------------------------------------------------------------------------------------------------ |
