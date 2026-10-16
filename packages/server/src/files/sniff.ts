@@ -1,6 +1,7 @@
 import type { DownloadedFile } from '../moodle/client.ts';
+import { ODF_TYPES } from './odf.ts';
 import { classify, DOCX, effectiveType, PPTX, XLSX } from './read.ts';
-import { listZip } from './zip.ts';
+import { listZip, unzipEntry } from './zip.ts';
 
 /** Bytes looked at when deciding whether a file is text. */
 const SNIFF_BYTES = 8192;
@@ -37,7 +38,7 @@ const isWebp = (bytes: Uint8Array) =>
   startsWith(bytes, { type: '', at: 0, bytes: ascii('RIFF') }) &&
   startsWith(bytes, { type: '', at: 8, bytes: ascii('WEBP') });
 
-export type TextEncoding = 'utf-8' | 'utf-16le' | 'utf-16be' | 'windows-1250';
+export type TextEncoding = 'utf-8' | 'utf-16le' | 'utf-16be' | 'windows-1250' | 'iso-8859-2';
 
 /** Share of control characters above which a window is taken for binary. */
 const MAX_CONTROL_SHARE = 0.02;
@@ -66,8 +67,25 @@ export function textEncoding(bytes: Uint8Array): TextEncoding | null {
     });
     return 'utf-8';
   } catch {
-    return 'windows-1250';
+    return legacyEncoding(head);
   }
+}
+
+const POLISH_LETTERS = /[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/g;
+
+/**
+ * Polish files are saved as Windows-1250 or ISO-8859-2, which put ą, ś and ź at different bytes (and give the
+ * other's letters to unrelated characters). The one whose reading has the most Polish letters, and the fewest
+ * other accented ones, is taken; Windows-1250 wins a tie, being the usual one on Windows.
+ */
+function legacyEncoding(head: Uint8Array): 'windows-1250' | 'iso-8859-2' {
+  const score = (encoding: 'windows-1250' | 'iso-8859-2') => {
+    const text = new TextDecoder(encoding).decode(head);
+    const polish = text.match(POLISH_LETTERS)?.length ?? 0;
+    const accented = text.match(/[^\p{ASCII}]/gu)?.length ?? 0;
+    return polish * 2 - accented;
+  };
+  return score('iso-8859-2') > score('windows-1250') ? 'iso-8859-2' : 'windows-1250';
 }
 
 /** Decodes text in the encoding it appears to be in; the encoding is returned so a guess can be reported. */
@@ -101,11 +119,17 @@ const OFFICE_BY_ENTRY: readonly (readonly [string, string])[] = [
   ['xl/workbook.xml', XLSX],
 ];
 
-/** A ZIP that is really a Word, PowerPoint or Excel file shows it by the parts it holds. */
+/** A ZIP that is really a Word, PowerPoint, Excel or OpenDocument file shows it by the parts it holds. */
 function officeType(bytes: Uint8Array): string | null {
   try {
     const names = new Set(listZip(bytes).entries.map((entry) => entry.path));
-    return OFFICE_BY_ENTRY.find(([part]) => names.has(part))?.[1] ?? null;
+    const office = OFFICE_BY_ENTRY.find(([part]) => names.has(part))?.[1];
+    if (office) return office;
+    // OpenDocument files say what they are in their `mimetype` part.
+    const declared = names.has('mimetype')
+      ? new TextDecoder().decode(unzipEntry(bytes, 'mimetype')).trim()
+      : '';
+    return ODF_TYPES.has(declared) ? declared : null;
   } catch {
     return null;
   }

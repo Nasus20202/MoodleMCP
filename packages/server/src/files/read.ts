@@ -1,4 +1,5 @@
 import type { DownloadedFile } from '../moodle/client.ts';
+import { ODF_TYPES, odfText, ODP, ODS, ODT } from './odf.ts';
 import type { PdfChunk, PdfWindow } from './pdf.ts';
 import { decodeText, type TextEncoding } from './sniff.ts';
 import { htmlToText } from './text.ts';
@@ -30,6 +31,9 @@ const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   jpeg: 'image/jpeg',
   gif: 'image/gif',
   webp: 'image/webp',
+  odt: ODT,
+  ods: ODS,
+  odp: ODP,
   zip: 'application/zip',
 };
 
@@ -66,7 +70,7 @@ export function effectiveType({ mimeType, filename }: Pick<DownloadedFile, 'mime
   return generic ? (MIME_BY_EXTENSION[extensionOf(filename)] ?? mimeType) : mimeType;
 }
 
-export type Kind = 'pdf' | 'docx' | 'pptx' | 'xlsx' | 'html' | 'image' | 'text' | 'zip';
+export type Kind = 'pdf' | 'docx' | 'pptx' | 'xlsx' | 'odf' | 'html' | 'image' | 'text' | 'zip';
 
 /** What we can do with a file, judged from its metadata alone (so unreadable files are never downloaded). */
 export function classify(meta: Pick<DownloadedFile, 'mimeType' | 'filename'>): Kind | null {
@@ -75,6 +79,7 @@ export function classify(meta: Pick<DownloadedFile, 'mimeType' | 'filename'>): K
   if (type === DOCX) return 'docx';
   if (type === PPTX) return 'pptx';
   if (type === XLSX) return 'xlsx';
+  if (ODF_TYPES.has(type)) return 'odf';
   if (type === 'text/html' || type === 'application/xhtml+xml') return 'html';
   if (IMAGE_TYPES.has(type)) return 'image';
   if (ZIP_TYPES.has(type)) return 'zip';
@@ -85,7 +90,7 @@ export function classify(meta: Pick<DownloadedFile, 'mimeType' | 'filename'>): K
 }
 
 export const unsupportedReason = (meta: Pick<DownloadedFile, 'mimeType' | 'filename'>) =>
-  `Cannot extract text from ${effectiveType(meta) || 'this file type'}. Supported: PDF, DOCX, PPTX, XLSX, HTML, images, text files and ZIP archives. For any other file, mode resource returns it unchanged.`;
+  `Cannot extract text from ${effectiveType(meta) || 'this file type'}. Supported: PDF, DOCX, PPTX, XLSX, OpenDocument (ODT, ODS, ODP), HTML, images, text files and ZIP archives. For any other file, mode resource returns it unchanged.`;
 
 /**
  * Extracts what a model can read from a downloaded file. The parsers (PDF.js, fflate) are large and most
@@ -116,6 +121,10 @@ export async function readFile(
       const { xlsxText } = await import('./xlsx.ts');
       const { text, sheets } = xlsxText(file.bytes);
       return { kind: 'text', format: 'xlsx', text, pages: sheets };
+    }
+    case 'odf': {
+      const { text, pages } = odfText(file.bytes, effectiveType(file));
+      return { kind: 'text', format: 'odf', text, ...(pages === undefined ? {} : { pages }) };
     }
     case 'html': {
       const { text, encoding } = decodeText(file.bytes);

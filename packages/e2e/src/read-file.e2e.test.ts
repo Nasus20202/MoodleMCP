@@ -70,6 +70,13 @@ describe('read_file against a mock Moodle file server', () => {
     expect(json().text).toBe('Syllabus\nWeek 1: sorting');
   });
 
+  it('extracts the text of a LibreOffice document', async () => {
+    expect((await read(fileUrl('letter.odt', 315))).json()).toMatchObject({
+      format: 'odf',
+      text: 'Dear students',
+    });
+  });
+
   it('converts HTML to text and drops scripts', async () => {
     const { json } = await read(fileUrl('page.html', 306));
     expect(json().text).toContain('Welcome');

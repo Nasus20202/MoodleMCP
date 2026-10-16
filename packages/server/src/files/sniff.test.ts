@@ -52,6 +52,21 @@ describe('textEncoding', () => {
   });
 });
 
+describe('Polish codepages', () => {
+  // "zażółć gęślą jaźń" in each encoding
+  const cp1250 = new Uint8Array([
+    0x7a, 0x61, 0xbf, 0xf3, 0xb3, 0xe6, 0x20, 0x67, 0xea, 0x9c, 0x6c, 0xb9, 0x20, 0x6a, 0x61, 0x9f, 0xf1,
+  ]);
+  const latin2 = new Uint8Array([
+    0x7a, 0x61, 0xbf, 0xf3, 0xb3, 0xe6, 0x20, 0x67, 0xea, 0xb6, 0x6c, 0xb1, 0x20, 0x6a, 0x61, 0xbc, 0xf1,
+  ]);
+
+  it('tells Windows-1250 from ISO-8859-2 and decodes both', () => {
+    expect(decodeText(cp1250)).toEqual({ text: 'zażółć gęślą jaźń', encoding: 'windows-1250' });
+    expect(decodeText(latin2)).toEqual({ text: 'zażółć gęślą jaźń', encoding: 'iso-8859-2' });
+  });
+});
+
 describe('decodeText', () => {
   it('decodes each encoding and says which it used', () => {
     expect(decodeText(bytes('zażółć'))).toEqual({ text: 'zażółć', encoding: 'utf-8' });
@@ -85,6 +100,11 @@ describe('withSniffedType', () => {
     expect(withSniffedType(file('deck', zip('ppt/presentation.xml'))).mimeType).toMatch(/presentationml/);
     expect(withSniffedType(file('sheet', zip('xl/workbook.xml'))).mimeType).toMatch(/spreadsheetml/);
     expect(withSniffedType(file('other', zip('a.txt'))).mimeType).toBe('application/zip');
+    const writer = zipSync({
+      mimetype: bytes('application/vnd.oasis.opendocument.text'),
+      'content.xml': bytes('<x/>'),
+    });
+    expect(withSniffedType(file('letter', writer)).mimeType).toBe('application/vnd.oasis.opendocument.text');
   });
 
   it('leaves files whose type is known, or that were not downloaded, alone', () => {

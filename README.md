@@ -43,7 +43,7 @@ tool to call next and where its ids come from.
 | Forums    | `list_forums`, `list_forum_discussions`, `get_forum_posts`                                                  |
 | Activity  | `get_notifications`                                                                                         |
 
-`read_file` takes a `fileurl` from another tool and returns text for PDF (text layer only), DOCX, PPTX, XLSX, HTML and
+`read_file` takes a `fileurl` from another tool and returns text for PDF (text layer only), DOCX, PPTX, XLSX, LibreOffice (ODT, ODS, ODP), HTML and
 plain text; images come back as images. A ZIP archive comes back as a list of its files, and passing one of their paths
 as `entry` reads that file like any other (archives inside archives are not opened). A file whose type the server
 and its name do not give is identified from its content (a few magic numbers, or valid UTF-8 text). Files up to 20 MB, paged with
