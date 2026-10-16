@@ -70,6 +70,13 @@ describe('read_file against a mock Moodle file server', () => {
     expect(json().text).toBe('Syllabus\nWeek 1: sorting');
   });
 
+  it('extracts the text of a LibreOffice document', async () => {
+    expect((await read(fileUrl('letter.odt', 315))).json()).toMatchObject({
+      format: 'odf',
+      text: 'Dear students',
+    });
+  });
+
   it('converts HTML to text and drops scripts', async () => {
     const { json } = await read(fileUrl('page.html', 306));
     expect(json().text).toContain('Welcome');
@@ -134,18 +141,38 @@ describe('read_file against a mock Moodle file server', () => {
     const listing = (await read(url)).json() as unknown as {
       format: string;
       entry_count: number;
-      entries: { path: string; readable: boolean }[];
+      entries: { path: string; readable: boolean | 'unknown' }[];
     };
     expect(listing).toMatchObject({ format: 'zip', entry_count: 3 });
     expect(listing.entries.map((e) => [e.path, e.readable])).toEqual([
-      ['code/Sort.kt', true],
-      ['readme.txt', true],
-      ['clip.mp4', false],
+      ['code/Sort.kt', 'unknown'],
+      ['readme.txt', 'unknown'],
+      ['clip.mp4', 'unknown'],
     ]);
 
     const entry = (await read(url, { entry: 'code/Sort.kt' })).json();
     expect(entry).toMatchObject({ filename: 'Sort.kt', readable: true, text: 'fun sort() = Unit' });
+
+    const clip = (await read(url, { entry: 'clip.mp4' })).json();
+    expect(clip).toMatchObject({ filename: 'clip.mp4', readable: false });
     expect(world.moodle.requests.every((r) => r.method === 'GET')).toBe(true);
+  });
+
+  it('tells what a file of unknown type is from its content', async () => {
+    const text = (await read(fileUrl('Main.kt', 311))).json();
+    expect(text).toMatchObject({ mime_type: 'text/plain', readable: true, text: 'fun main() = Unit' });
+
+    const image = await read(fileUrl('picture', 312));
+    expect(image.result.content[0]).toMatchObject({ type: 'image', mimeType: 'image/png' });
+
+    const legacy = (await read(fileUrl('legacy.txt', 314), { mode: 'extract' })).json();
+    expect(legacy.text).toBe('zażółć');
+    expect(legacy.note).toContain('windows-1250');
+
+    const binary = (await read(fileUrl('blob.dat', 313))).json();
+    expect(binary).toMatchObject({ readable: false });
+    expect(binary.note).toContain('Cannot extract text');
+    expect(binary.note).toContain('mode resource');
   });
 
   it('keeps ZIP entry names and contents out of the logs', async () => {

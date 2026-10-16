@@ -1,5 +1,7 @@
 import type { DownloadedFile } from '../moodle/client.ts';
+import { ODF_TYPES, odfText, ODP, ODS, ODT } from './odf.ts';
 import type { PdfChunk, PdfWindow } from './pdf.ts';
+import { decodeText, type TextEncoding } from './sniff.ts';
 import { htmlToText } from './text.ts';
 
 /** Largest image handed to the model as an image rather than described. */
@@ -13,11 +15,15 @@ const ZIP_TYPES: ReadonlySet<string> = new Set([
 
 const IMAGE_TYPES: ReadonlySet<string> = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
+export const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+export const PPTX = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+export const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
 const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   pdf: 'application/pdf',
-  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  docx: DOCX,
+  pptx: PPTX,
+  xlsx: XLSX,
   html: 'text/html',
   htm: 'text/html',
   png: 'image/png',
@@ -25,12 +31,11 @@ const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   jpeg: 'image/jpeg',
   gif: 'image/gif',
   webp: 'image/webp',
+  odt: ODT,
+  ods: ODS,
+  odp: ODP,
   zip: 'application/zip',
 };
-
-const DOCX = MIME_BY_EXTENSION.docx;
-const PPTX = MIME_BY_EXTENSION.pptx;
-const XLSX = MIME_BY_EXTENSION.xlsx;
 
 const TEXT_APPLICATION_TYPES: ReadonlySet<string> = new Set([
   'application/json',
@@ -43,60 +48,6 @@ const TEXT_APPLICATION_TYPES: ReadonlySet<string> = new Set([
   'application/csv',
 ]);
 
-const TEXT_EXTENSIONS: ReadonlySet<string> = new Set([
-  'txt',
-  'md',
-  'csv',
-  'tsv',
-  'json',
-  'xml',
-  'yaml',
-  'yml',
-  'log',
-  'tex',
-  'sql',
-  'py',
-  'js',
-  'ts',
-  'java',
-  'c',
-  'h',
-  'cpp',
-  'hpp',
-  'cs',
-  'go',
-  'rs',
-  'rb',
-  'php',
-  'sh',
-  'r',
-  'm',
-  'ipynb',
-  'ini',
-  'toml',
-  'srt',
-  'vtt',
-  'rtf',
-  'kt',
-  'kts',
-  'swift',
-  'gradle',
-  'scala',
-  'dart',
-  'lua',
-  'pl',
-  'jsx',
-  'tsx',
-  'vue',
-  'css',
-  'svg',
-  'properties',
-  'cfg',
-  'conf',
-  'bat',
-  'ps1',
-]);
-
 export interface ReadOptions {
   /** Character offset to start from, for paging through long documents. */
   offset: number;
@@ -105,7 +56,7 @@ export interface ReadOptions {
 }
 
 export type FileReading =
-  | { kind: 'text'; format: string; text: string; pages?: number }
+  | { kind: 'text'; format: string; text: string; pages?: number; encoding?: TextEncoding }
   | { kind: 'pdf'; chunk: PdfChunk }
   | { kind: 'image'; mimeType: string; base64: string }
   | { kind: 'unsupported'; reason: string };
@@ -119,9 +70,7 @@ export function effectiveType({ mimeType, filename }: Pick<DownloadedFile, 'mime
   return generic ? (MIME_BY_EXTENSION[extensionOf(filename)] ?? mimeType) : mimeType;
 }
 
-const decodeUtf8 = (bytes: Uint8Array) => new TextDecoder('utf-8').decode(bytes);
-
-export type Kind = 'pdf' | 'docx' | 'pptx' | 'xlsx' | 'html' | 'image' | 'text' | 'zip';
+export type Kind = 'pdf' | 'docx' | 'pptx' | 'xlsx' | 'odf' | 'html' | 'image' | 'text' | 'zip';
 
 /** What we can do with a file, judged from its metadata alone (so unreadable files are never downloaded). */
 export function classify(meta: Pick<DownloadedFile, 'mimeType' | 'filename'>): Kind | null {
@@ -130,17 +79,18 @@ export function classify(meta: Pick<DownloadedFile, 'mimeType' | 'filename'>): K
   if (type === DOCX) return 'docx';
   if (type === PPTX) return 'pptx';
   if (type === XLSX) return 'xlsx';
+  if (ODF_TYPES.has(type)) return 'odf';
   if (type === 'text/html' || type === 'application/xhtml+xml') return 'html';
   if (IMAGE_TYPES.has(type)) return 'image';
   if (ZIP_TYPES.has(type)) return 'zip';
-  if (type.startsWith('text/') || TEXT_APPLICATION_TYPES.has(type)) return 'text';
-  // Moodle labels much source code with odd types, so trust the extension, but never over media.
-  const media = type.startsWith('video/') || type.startsWith('audio/');
-  return !media && TEXT_EXTENSIONS.has(extensionOf(meta.filename)) ? 'text' : null;
+  // `+xml` and `+json` are structured syntax suffixes (SVG, Atom, ...), text by definition.
+  if (type.startsWith('text/') || /\+(xml|json)$/.test(type) || TEXT_APPLICATION_TYPES.has(type))
+    return 'text';
+  return null;
 }
 
 export const unsupportedReason = (meta: Pick<DownloadedFile, 'mimeType' | 'filename'>) =>
-  `Cannot extract text from ${effectiveType(meta) || 'this file type'}. Supported: PDF, DOCX, PPTX, XLSX, HTML, images, plain-text files and ZIP archives.`;
+  `Cannot extract text from ${effectiveType(meta) || 'this file type'}. Supported: PDF, DOCX, PPTX, XLSX, OpenDocument (ODT, ODS, ODP), HTML, images, text files and ZIP archives. For any other file, mode resource returns it unchanged.`;
 
 /**
  * Extracts what a model can read from a downloaded file. The parsers (PDF.js, fflate) are large and most
@@ -172,15 +122,23 @@ export async function readFile(
       const { text, sheets } = xlsxText(file.bytes);
       return { kind: 'text', format: 'xlsx', text, pages: sheets };
     }
-    case 'html':
-      return { kind: 'text', format: 'html', text: htmlToText(decodeUtf8(file.bytes)) };
+    case 'odf': {
+      const { text, pages } = odfText(file.bytes, effectiveType(file));
+      return { kind: 'text', format: 'odf', text, ...(pages === undefined ? {} : { pages }) };
+    }
+    case 'html': {
+      const { text, encoding } = decodeText(file.bytes);
+      return { kind: 'text', format: 'html', text: htmlToText(text), encoding };
+    }
     case 'image':
       if (file.bytes.byteLength > MAX_IMAGE_BYTES) {
         return { kind: 'unsupported', reason: 'The image is larger than 4 MB, which is too big to return.' };
       }
       return { kind: 'image', mimeType: effectiveType(file), base64: toBase64(file.bytes) };
-    case 'text':
-      return { kind: 'text', format: extensionOf(file.filename) || 'text', text: decodeUtf8(file.bytes) };
+    case 'text': {
+      const { text, encoding } = decodeText(file.bytes);
+      return { kind: 'text', format: extensionOf(file.filename) || 'text', text, encoding };
+    }
     case 'zip':
       return {
         kind: 'unsupported',

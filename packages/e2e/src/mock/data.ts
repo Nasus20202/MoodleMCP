@@ -134,6 +134,36 @@ export const FILES: Record<string, MockFile> = {
     }),
     type: 'application/zip',
   },
+  '/webservice/pluginfile.php/311/mod_resource/content/1/Main.kt': {
+    course: COURSE_ALG,
+    body: 'fun main() = Unit',
+    type: 'application/octet-stream',
+  },
+  '/webservice/pluginfile.php/312/mod_resource/content/1/picture': {
+    course: COURSE_ALG,
+    body: PNG_BYTES,
+    type: 'application/octet-stream',
+  },
+  '/webservice/pluginfile.php/314/mod_resource/content/1/legacy.txt': {
+    course: COURSE_ALG,
+    body: new Uint8Array([0x7a, 0x61, 0xbf, 0xf3, 0xb3, 0xe6]),
+    type: 'text/plain',
+  },
+  '/webservice/pluginfile.php/315/mod_resource/content/1/letter.odt': {
+    course: COURSE_ALG,
+    body: zipSync({
+      mimetype: strToU8('application/vnd.oasis.opendocument.text'),
+      'content.xml': strToU8(
+        '<office:document-content xmlns:office="o" xmlns:text="t"><office:body><office:text><text:p>Dear students</text:p></office:text></office:body></office:document-content>',
+      ),
+    }),
+    type: 'application/vnd.oasis.opendocument.text',
+  },
+  '/webservice/pluginfile.php/313/mod_resource/content/1/blob.dat': {
+    course: COURSE_ALG,
+    body: new Uint8Array([0, 1, 2, 3, 255, 254]),
+    type: 'application/octet-stream',
+  },
   '/webservice/pluginfile.php/308/mod_resource/content/1/long.txt': {
     course: COURSE_ALG,
     body: 'a'.repeat(2500) + 'b'.repeat(2500),

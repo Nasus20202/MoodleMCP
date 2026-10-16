@@ -4,6 +4,7 @@ import { classifyConversionFailure, conversionFailureNote, toMarkdown } from '..
 import { chooseMode, type ModeChoice, ReadMode } from '../files/mode.ts';
 import { MAX_PAGES_PER_CALL } from '../files/pdf.ts';
 import { classify, effectiveType, pageText, readFile, toBase64, unsupportedReason } from '../files/read.ts';
+import { encodingNote, isGenericType, judge, readableByContent, withSniffedType } from '../files/sniff.ts';
 import { listZip, MAX_ENTRY_BYTES, unzipEntry, ZipEntryTooLargeError } from '../files/zip.ts';
 import type { DownloadedFile } from '../moodle/client.ts';
 import { defineCustomTool, jsonContent, type ToolContent, type ToolContext } from './define.ts';
@@ -90,7 +91,7 @@ export const readFileTool = defineCustomTool({
 });
 
 async function readResource({ client, logger }: ToolContext, { file_url }: Input): Promise<ToolContent[]> {
-  const file = await client.download(file_url, MAX_FILE_BYTES);
+  const file = withSniffedType(await client.download(file_url, MAX_FILE_BYTES));
   logger.info('file returned as resource', { mime: file.mimeType, bytes: file.bytes.byteLength });
   const data = toBase64(file.bytes);
   const mimeType = file.mimeType || 'application/octet-stream';
@@ -107,12 +108,9 @@ async function readResource({ client, logger }: ToolContext, { file_url }: Input
 }
 
 async function readText(context: ToolContext, args: Input): Promise<ToolContent[]> {
-  const file = await context.client.download(
-    args.file_url,
-    MAX_FILE_BYTES,
-    (meta) => classify(meta) !== null,
-  );
-  return readDocument(context, file, args, {});
+  // A file of unknown type is looked into: its first bytes say whether it is worth reading.
+  const file = await context.client.download(args.file_url, MAX_FILE_BYTES, judge, readableByContent);
+  return readDocument(context, withSniffedType(file), args, {});
 }
 
 /** Where a file being read came from, when it is an entry of an archive. */
@@ -224,11 +222,13 @@ function listArchive({ logger }: ToolContext, file: DownloadedFile): ToolContent
   const entries = listing.entries.map(({ path, size }) => {
     const entry = { filename: basename(path), mimeType: '' };
     const kind = classify(entry);
+    const type = effectiveType(entry);
     return {
       path,
       size_bytes: size,
-      type: effectiveType(entry) || null,
-      readable: kind !== null && kind !== 'zip',
+      type: type || null,
+      // Nothing is inflated to list, so a name that says nothing about the content is left open.
+      readable: kind !== null ? kind !== 'zip' : isGenericType(type) ? ('unknown' as const) : false,
     };
   });
   const truncated = listing.total > entries.length;
@@ -240,7 +240,7 @@ function listArchive({ logger }: ToolContext, file: DownloadedFile): ToolContent
     ...(truncated && { truncated: true }),
     note:
       'To read one of the files, call read_file again with `entry` set to its path. Entries marked ' +
-      'readable: false cannot be turned into text.' +
+      'readable: false cannot be turned into text; for readable: "unknown" the name does not say, so try it.' +
       (truncated ? ` Not every entry is listed: ${entries.length} of ${listing.total} are shown.` : ''),
     entries,
   });
@@ -288,7 +288,7 @@ async function readEntry(
     mimeType: effectiveType({ filename, mimeType: '' }),
     skipped: false,
   };
-  return readDocument(context, entry, args, {
+  return readDocument(context, withSniffedType(entry), args, {
     nested: true,
     note: `Read from ${archive.filename}: ${path}.`,
   });
@@ -429,11 +429,12 @@ async function extract(
     truncated: offset + max_chars < reading.text.length,
     ms: Date.now() - started,
   });
+  const note = joinNotes(modeNote, reading.encoding && encodingNote(reading.encoding));
   return textResult(file, args, {
     format: reading.format,
     mode: ReadMode.Extract,
     text: reading.text,
     ...(reading.pages === undefined ? {} : { pages: reading.pages }),
-    ...(modeNote && { note: modeNote }),
+    ...(note && { note }),
   });
 }
