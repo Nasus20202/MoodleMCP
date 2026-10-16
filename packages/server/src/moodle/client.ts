@@ -91,11 +91,16 @@ export class MoodleClient {
    * Downloads a file the token owner may read (a read-only GET). `fileUrl` must be on this site's
    * file server; redirects are refused so the token cannot be forwarded elsewhere.
    */
-  async download(fileUrl: string, maxBytes: number, accept?: FileFilter): Promise<DownloadedFile> {
+  async download(
+    fileUrl: string,
+    maxBytes: number,
+    accept?: FileFilter,
+    keepAfterPeek?: PeekFilter,
+  ): Promise<DownloadedFile> {
     const url = resolveFileUrl(this.#baseUrl, fileUrl, this.#token);
     const started = Date.now();
     try {
-      const file = await this.#get(url, maxBytes, accept);
+      const file = await this.#get(url, maxBytes, accept, keepAfterPeek);
       const ms = Date.now() - started;
       const bytes = file.bytes.byteLength;
       this.#log.info(`moodle download ${file.mimeType} ${bytes} bytes ${ms}ms`, {
@@ -119,7 +124,12 @@ export class MoodleClient {
     }
   }
 
-  async #get(url: URL, maxBytes: number, accept?: FileFilter): Promise<DownloadedFile> {
+  async #get(
+    url: URL,
+    maxBytes: number,
+    accept?: FileFilter,
+    keepAfterPeek?: PeekFilter,
+  ): Promise<DownloadedFile> {
     const doFetch = this.#fetch;
     let response: Response;
     try {
@@ -132,14 +142,17 @@ export class MoodleClient {
     const mimeType = (response.headers.get('Content-Type') ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
     const filename = filenameOf(response, url);
     // Don't pull down what the caller has no use for.
-    if (accept && !accept({ mimeType, filename })) {
+    const verdict = accept ? accept({ mimeType, filename }) : true;
+    if (verdict === false) {
       await response.body?.cancel();
       return { bytes: new Uint8Array(), mimeType, filename, skipped: true };
     }
     const declared = Number(response.headers.get('Content-Length'));
     if (declared > maxBytes) throw tooLarge(declared, maxBytes);
 
-    const bytes = await readLimited(response, maxBytes);
+    const peek = verdict === 'peek' && keepAfterPeek ? keepAfterPeek : undefined;
+    const bytes = await readLimited(response, maxBytes, peek);
+    if (bytes === null) return { bytes: new Uint8Array(), mimeType, filename, skipped: true };
     // Moodle reports a missing or forbidden file as a JSON body with status 200.
     if (mimeType === 'application/json' && bytes.byteLength < 64 * 1024) {
       const body = safeJson(bytes);
@@ -178,15 +191,28 @@ export interface DownloadedFile {
 }
 
 /** Decides from the response headers alone whether the body is worth downloading. */
-export type FileFilter = (meta: Pick<DownloadedFile, 'mimeType' | 'filename'>) => boolean;
+export type FileFilter = (meta: Pick<DownloadedFile, 'mimeType' | 'filename'>) => boolean | 'peek';
+
+/** Decides from the first bytes of a body whether to read the rest (for a `'peek'` verdict). */
+export type PeekFilter = (head: Uint8Array) => boolean;
+
+/** How much of a body is looked at before a `PeekFilter` decides. */
+export const PEEK_BYTES = 8192;
 
 const tooLarge = (size: number, max: number) =>
   new MoodleTransportError(
     `File is too large to read (${Math.round(size / 1024 / 1024)} MB; the limit is ${Math.round(max / 1024 / 1024)} MB)`,
   );
 
-/** Reads the body, giving up as soon as it exceeds `maxBytes` (Content-Length may be absent or wrong). */
-async function readLimited(response: Response, maxBytes: number): Promise<Uint8Array> {
+/**
+ * Reads the body, giving up as soon as it exceeds `maxBytes` (Content-Length may be absent or wrong). With
+ * `peek`, the first `PEEK_BYTES` are shown to it and the rest is left unread, returning null, if it says no.
+ */
+async function readLimited(
+  response: Response,
+  maxBytes: number,
+  peek?: PeekFilter,
+): Promise<Uint8Array | null> {
   const reader = response.body?.getReader();
   if (!reader) return new Uint8Array();
   const chunks: Uint8Array[] = [];
@@ -201,7 +227,19 @@ async function readLimited(response: Response, maxBytes: number): Promise<Uint8A
       throw tooLarge(total, maxBytes);
     }
     chunks.push(value);
+    if (peek && total >= PEEK_BYTES) {
+      if (!peek(concat(chunks, total))) {
+        await reader.cancel();
+        return null;
+      }
+      peek = undefined;
+    }
   }
+  if (peek && !peek(concat(chunks, total))) return null;
+  return concat(chunks, total);
+}
+
+function concat(chunks: Uint8Array[], total: number): Uint8Array {
   const out = new Uint8Array(total);
   let at = 0;
   for (const chunk of chunks) {

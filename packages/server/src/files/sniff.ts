@@ -25,7 +25,6 @@ const SIGNATURES: readonly Signature[] = [
   { type: 'image/jpeg', at: 0, bytes: [0xff, 0xd8, 0xff] },
   { type: 'image/gif', at: 0, bytes: ascii('GIF8') },
   { type: 'video/mp4', at: 4, bytes: ascii('ftyp') },
-  { type: 'audio/mpeg', at: 0, bytes: ascii('ID3') },
   { type: 'application/gzip', at: 0, bytes: [0x1f, 0x8b] },
 ];
 
@@ -69,12 +68,29 @@ export function sniffType(bytes: Uint8Array): string | null {
   return looksLikeText(bytes) ? 'text/plain' : null;
 }
 
+const isMedia = (type: string) => type.startsWith('video/') || type.startsWith('audio/');
+
+/** Whether a file the server could not name is worth reading in full: its content is a type we can read. */
+export const readableByContent = (head: Uint8Array): boolean => {
+  const type = sniffType(head);
+  return type !== null && classify({ filename: '', mimeType: type }) !== null;
+};
+
+/**
+ * What to do with a file's headers alone: read it, skip it, or look at its first bytes to decide. Declared
+ * audio and video are never opened.
+ */
+export function judge(meta: Pick<DownloadedFile, 'mimeType' | 'filename'>): boolean | 'peek' {
+  if (classify(meta) !== null) return true;
+  return isMedia(effectiveType(meta)) ? false : 'peek';
+}
+
 /**
  * Names the type of a file that neither its server nor its extension identified, from its content. A file
- * whose type is already known, or that has been refused unread, is returned as it is.
+ * whose type is already known, declared as audio or video, or refused unread, is returned as it is.
  */
 export function withSniffedType(file: DownloadedFile): DownloadedFile {
-  if (file.skipped || classify(file) !== null || !isGenericType(effectiveType(file))) return file;
+  if (file.skipped || classify(file) !== null || isMedia(effectiveType(file))) return file;
   const type = sniffType(file.bytes);
   return type === null ? file : { ...file, mimeType: type };
 }

@@ -165,6 +165,35 @@ describe('MoodleClient.download', () => {
     expect(file.bytes).toHaveLength(0);
   });
 
+  it('reads the rest of a body only when a peek at its start says so', async () => {
+    const text = respond('x'.repeat(20_000), { 'Content-Type': 'application/octet-stream' });
+    const kept = await clientFor(text.fetch).download(
+      FILE,
+      1024 * 1024,
+      () => 'peek',
+      (head) => head[0] === 120,
+    );
+    expect(kept).toMatchObject({ skipped: false });
+    expect(kept.bytes).toHaveLength(20_000);
+
+    const refused = await clientFor(text.fetch).download(
+      FILE,
+      1024 * 1024,
+      () => 'peek',
+      () => false,
+    );
+    expect(refused).toMatchObject({ skipped: true });
+    expect(refused.bytes).toHaveLength(0);
+
+    const short = await clientFor(respond('abc').fetch).download(
+      FILE,
+      1024,
+      () => 'peek',
+      (head) => head.length === 3,
+    );
+    expect(short).toMatchObject({ skipped: false });
+  });
+
   it('never logs the token or the URL', async () => {
     const lines: string[] = [];
     const logger = createLogger('debug', (_l, line) => lines.push(line));

@@ -4,7 +4,7 @@ import { classifyConversionFailure, conversionFailureNote, toMarkdown } from '..
 import { chooseMode, type ModeChoice, ReadMode } from '../files/mode.ts';
 import { MAX_PAGES_PER_CALL } from '../files/pdf.ts';
 import { classify, effectiveType, pageText, readFile, toBase64, unsupportedReason } from '../files/read.ts';
-import { isGenericType, withSniffedType } from '../files/sniff.ts';
+import { isGenericType, judge, readableByContent, withSniffedType } from '../files/sniff.ts';
 import { listZip, MAX_ENTRY_BYTES, unzipEntry, ZipEntryTooLargeError } from '../files/zip.ts';
 import type { DownloadedFile } from '../moodle/client.ts';
 import { defineCustomTool, jsonContent, type ToolContent, type ToolContext } from './define.ts';
@@ -108,12 +108,8 @@ async function readResource({ client, logger }: ToolContext, { file_url }: Input
 }
 
 async function readText(context: ToolContext, args: Input): Promise<ToolContent[]> {
-  // A file of unknown type is downloaded too: its content says what it is.
-  const file = await context.client.download(
-    args.file_url,
-    MAX_FILE_BYTES,
-    (meta) => classify(meta) !== null || isGenericType(effectiveType(meta)),
-  );
+  // A file of unknown type is looked into: its first bytes say whether it is worth reading.
+  const file = await context.client.download(args.file_url, MAX_FILE_BYTES, judge, readableByContent);
   return readDocument(context, withSniffedType(file), args, {});
 }
 
