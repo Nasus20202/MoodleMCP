@@ -1,7 +1,8 @@
+import { zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 
 import type { DownloadedFile } from '../moodle/client.ts';
-import { judge, looksLikeText, readableByContent, sniffType, withSniffedType } from './sniff.ts';
+import { decodeText, judge, readableByContent, sniffType, textEncoding, withSniffedType } from './sniff.ts';
 
 const bytes = (text: string) => new TextEncoder().encode(text);
 const file = (filename: string, body: Uint8Array, mimeType = 'application/octet-stream'): DownloadedFile => ({
@@ -21,6 +22,8 @@ describe('sniffType', () => {
     ['WebP', bytes('RIFF\0\0\0\0WEBPVP8 '), 'image/webp'],
     ['MP4', new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]), 'video/mp4'],
     ['source code', bytes('fun main() = println("zażółć")\n'), 'text/plain'],
+    ['HTML', bytes('\n<!DOCTYPE html><p>hi'), 'text/html'],
+    ['Polish codepage text', new Uint8Array([0x7a, 0x61, 0xbf, 0xf3]), 'text/plain'],
     ['nothing', new Uint8Array(), 'text/plain'],
   ])('%s', (_name, body, expected) => {
     expect(sniffType(body)).toBe(expected);
@@ -28,18 +31,35 @@ describe('sniffType', () => {
 
   it('gives up on other binary data', () => {
     expect(sniffType(new Uint8Array([0, 1, 2, 3, 4]))).toBeNull();
-    expect(sniffType(new Uint8Array([0xff, 0xfe, 0xfd, 0x80]))).toBeNull();
+    expect(sniffType(new Uint8Array([0xfe, 0xfd, 0x80, 0x00]))).toBeNull();
   });
 });
 
-describe('looksLikeText', () => {
+describe('textEncoding', () => {
   it('is not fooled by a multi-byte character cut off by the end of the window', () => {
-    expect(looksLikeText(bytes('a'.repeat(8191) + 'ż'))).toBe(true);
+    expect(textEncoding(bytes('a'.repeat(8191) + 'ż'))).toBe('utf-8');
   });
 
-  it('rejects text with a NUL byte or many control characters', () => {
-    expect(looksLikeText(bytes('abc\0def'))).toBe(false);
-    expect(looksLikeText(bytes('\u0001\u0002\u0003abc'))).toBe(false);
+  it('rejects data with a NUL byte or many control characters', () => {
+    expect(textEncoding(bytes('abc\0def'))).toBeNull();
+    expect(textEncoding(bytes('\u0001\u0002\u0003abc'))).toBeNull();
+  });
+
+  it('recognises UTF-16 by its byte order mark and Windows-1250 by exclusion', () => {
+    expect(textEncoding(new Uint8Array([0xff, 0xfe, 0x61, 0x00]))).toBe('utf-16le');
+    expect(textEncoding(new Uint8Array([0xfe, 0xff, 0x00, 0x61]))).toBe('utf-16be');
+    expect(textEncoding(new Uint8Array([0x7a, 0x61, 0xbf, 0xf3, 0xb3, 0xe6]))).toBe('windows-1250');
+  });
+});
+
+describe('decodeText', () => {
+  it('decodes each encoding and says which it used', () => {
+    expect(decodeText(bytes('zażółć'))).toEqual({ text: 'zażółć', encoding: 'utf-8' });
+    expect(decodeText(new Uint8Array([0x7a, 0x61, 0xbf, 0xf3, 0xb3, 0xe6]))).toEqual({
+      text: 'zażółć',
+      encoding: 'windows-1250',
+    });
+    expect(decodeText(new Uint8Array([0xff, 0xfe, 0x61, 0x00, 0x62, 0x00])).text).toBe('ab');
   });
 });
 
@@ -57,6 +77,14 @@ describe('withSniffedType', () => {
 
   it('does not take text that starts with ID3 for audio', () => {
     expect(withSniffedType(file('data', bytes('ID3,name\n1,a'))).mimeType).toBe('text/plain');
+  });
+
+  it('recognises Word, PowerPoint and Excel files by the parts inside a ZIP', () => {
+    const zip = (name: string) => zipSync({ [name]: bytes('<x/>') });
+    expect(withSniffedType(file('doc', zip('word/document.xml'))).mimeType).toMatch(/wordprocessingml/);
+    expect(withSniffedType(file('deck', zip('ppt/presentation.xml'))).mimeType).toMatch(/presentationml/);
+    expect(withSniffedType(file('sheet', zip('xl/workbook.xml'))).mimeType).toMatch(/spreadsheetml/);
+    expect(withSniffedType(file('other', zip('a.txt'))).mimeType).toBe('application/zip');
   });
 
   it('leaves files whose type is known, or that were not downloaded, alone', () => {

@@ -156,7 +156,7 @@ describe('read_file', () => {
       });
       expect(json().entries).toEqual([
         { path: 'src/Main.kt', size_bytes: 26, type: null, readable: 'unknown' },
-        { path: 'notes.txt', size_bytes: 9, type: null, readable: true },
+        { path: 'notes.txt', size_bytes: 9, type: null, readable: 'unknown' },
         { path: 'clip.mp4', size_bytes: 4, type: null, readable: 'unknown' },
         { path: 'inner.zip', size_bytes: inner.length, type: 'application/zip', readable: false },
       ]);

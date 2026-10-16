@@ -144,6 +144,11 @@ export const FILES: Record<string, MockFile> = {
     body: PNG_BYTES,
     type: 'application/octet-stream',
   },
+  '/webservice/pluginfile.php/314/mod_resource/content/1/legacy.txt': {
+    course: COURSE_ALG,
+    body: new Uint8Array([0x7a, 0x61, 0xbf, 0xf3, 0xb3, 0xe6]),
+    type: 'text/plain',
+  },
   '/webservice/pluginfile.php/313/mod_resource/content/1/blob.dat': {
     course: COURSE_ALG,
     body: new Uint8Array([0, 1, 2, 3, 255, 254]),

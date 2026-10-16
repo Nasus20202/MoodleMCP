@@ -139,7 +139,7 @@ describe('read_file against a mock Moodle file server', () => {
     expect(listing).toMatchObject({ format: 'zip', entry_count: 3 });
     expect(listing.entries.map((e) => [e.path, e.readable])).toEqual([
       ['code/Sort.kt', 'unknown'],
-      ['readme.txt', true],
+      ['readme.txt', 'unknown'],
       ['clip.mp4', 'unknown'],
     ]);
 
@@ -158,9 +158,14 @@ describe('read_file against a mock Moodle file server', () => {
     const image = await read(fileUrl('picture', 312));
     expect(image.result.content[0]).toMatchObject({ type: 'image', mimeType: 'image/png' });
 
+    const legacy = (await read(fileUrl('legacy.txt', 314), { mode: 'extract' })).json();
+    expect(legacy.text).toBe('zażółć');
+    expect(legacy.note).toContain('windows-1250');
+
     const binary = (await read(fileUrl('blob.dat', 313))).json();
     expect(binary).toMatchObject({ readable: false });
     expect(binary.note).toContain('Cannot extract text');
+    expect(binary.note).toContain('mode resource');
   });
 
   it('keeps ZIP entry names and contents out of the logs', async () => {

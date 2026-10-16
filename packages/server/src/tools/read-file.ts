@@ -4,7 +4,7 @@ import { classifyConversionFailure, conversionFailureNote, toMarkdown } from '..
 import { chooseMode, type ModeChoice, ReadMode } from '../files/mode.ts';
 import { MAX_PAGES_PER_CALL } from '../files/pdf.ts';
 import { classify, effectiveType, pageText, readFile, toBase64, unsupportedReason } from '../files/read.ts';
-import { isGenericType, judge, readableByContent, withSniffedType } from '../files/sniff.ts';
+import { encodingNote, isGenericType, judge, readableByContent, withSniffedType } from '../files/sniff.ts';
 import { listZip, MAX_ENTRY_BYTES, unzipEntry, ZipEntryTooLargeError } from '../files/zip.ts';
 import type { DownloadedFile } from '../moodle/client.ts';
 import { defineCustomTool, jsonContent, type ToolContent, type ToolContext } from './define.ts';
@@ -429,11 +429,12 @@ async function extract(
     truncated: offset + max_chars < reading.text.length,
     ms: Date.now() - started,
   });
+  const note = joinNotes(modeNote, reading.encoding && encodingNote(reading.encoding));
   return textResult(file, args, {
     format: reading.format,
     mode: ReadMode.Extract,
     text: reading.text,
     ...(reading.pages === undefined ? {} : { pages: reading.pages }),
-    ...(modeNote && { note: modeNote }),
+    ...(note && { note }),
   });
 }
