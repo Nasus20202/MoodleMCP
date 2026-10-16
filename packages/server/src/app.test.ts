@@ -163,6 +163,13 @@ describe('read_file', () => {
       expect(moodle.calls).toHaveLength(1);
     });
 
+    it('says when paging arguments are given for a listing', async () => {
+      const { json } = await readFile(serve(archive(), 'application/zip'), { max_chars: 2000 });
+      expect(String(json().note)).toContain('do not apply to a listing');
+      const plain = await readFile(serve(archive(), 'application/zip'));
+      expect(String(plain.json().note)).not.toContain('do not apply');
+    });
+
     it('reads one entry like a file of its own, with paging', async () => {
       const { json } = await readFile(serve(archive(), 'application/zip'), { entry: 'src/Main.kt' });
       expect(json()).toMatchObject({
@@ -182,7 +189,12 @@ describe('read_file', () => {
       expect(missing.note).toContain('no entry');
 
       const media = (await readFile(respond, { entry: 'clip.mp4' })).json();
-      expect(media).toMatchObject({ filename: 'clip.mp4', readable: false });
+      expect(media).toMatchObject({
+        filename: 'clip.mp4',
+        mime_type: 'application/octet-stream',
+        size_bytes: 4,
+        readable: false,
+      });
 
       const nested = (await readFile(respond, { entry: 'inner.zip' })).json();
       expect(nested).toMatchObject({ readable: false });
