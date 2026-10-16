@@ -135,7 +135,9 @@ async function readDocument(
     logger.info('file not readable', { mime: file.mimeType, reason: 'unsupported type' });
     return jsonContent({
       filename: file.filename,
-      mime_type: file.mimeType,
+      mime_type: effectiveType(file) || 'application/octet-stream',
+      // A file refused from its headers was never downloaded, so its size is not known.
+      ...(file.skipped ? {} : { size_bytes: file.bytes.byteLength }),
       readable: false,
       note: joinNotes(origin.note, unsupportedReason(file)),
     });
@@ -149,7 +151,9 @@ async function readDocument(
         note: joinNotes(origin.note, 'An archive inside an archive is not opened.'),
       });
     }
-    return args.entry === undefined ? listArchive(context, file) : readEntry(context, file, args, args.entry);
+    return args.entry === undefined
+      ? listArchive(context, file, args)
+      : readEntry(context, file, args, args.entry);
   }
 
   if (args.entry !== undefined && !origin.nested) {
@@ -201,7 +205,7 @@ async function readDocument(
 }
 
 /** What an archive holds, without inflating any of it. */
-function listArchive({ logger }: ToolContext, file: DownloadedFile): ToolContent[] {
+function listArchive({ logger }: ToolContext, file: DownloadedFile, args: Input): ToolContent[] {
   let listing;
   try {
     listing = listZip(file.bytes);
@@ -232,6 +236,7 @@ function listArchive({ logger }: ToolContext, file: DownloadedFile): ToolContent
     };
   });
   const truncated = listing.total > entries.length;
+  const paged = args.offset > 0 || args.page > 1 || args.max_chars !== DEFAULT_CHARS;
   return jsonContent({
     ...describeFile(file),
     readable: true,
@@ -241,7 +246,10 @@ function listArchive({ logger }: ToolContext, file: DownloadedFile): ToolContent
     note:
       'To read one of the files, call read_file again with `entry` set to its path. Entries marked ' +
       'readable: false cannot be turned into text; for readable: "unknown" the name does not say, so try it.' +
-      (truncated ? ` Not every entry is listed: ${entries.length} of ${listing.total} are shown.` : ''),
+      (truncated ? ` Not every entry is listed: ${entries.length} of ${listing.total} are shown.` : '') +
+      (paged
+        ? ' offset, page and max_chars do not apply to a listing; they are used when reading an entry.'
+        : ''),
     entries,
   });
 }
@@ -349,7 +357,6 @@ async function extract(
       bytes: meta.size_bytes,
       ms: Date.now() - started,
       error: error instanceof Error ? error.name : 'unknown',
-      detail: error instanceof Error ? error.message.slice(0, 200) : undefined,
     });
     return jsonContent({
       ...meta,
