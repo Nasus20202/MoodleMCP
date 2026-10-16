@@ -134,18 +134,33 @@ describe('read_file against a mock Moodle file server', () => {
     const listing = (await read(url)).json() as unknown as {
       format: string;
       entry_count: number;
-      entries: { path: string; readable: boolean }[];
+      entries: { path: string; readable: boolean | 'unknown' }[];
     };
     expect(listing).toMatchObject({ format: 'zip', entry_count: 3 });
     expect(listing.entries.map((e) => [e.path, e.readable])).toEqual([
-      ['code/Sort.kt', true],
+      ['code/Sort.kt', 'unknown'],
       ['readme.txt', true],
-      ['clip.mp4', false],
+      ['clip.mp4', 'unknown'],
     ]);
 
     const entry = (await read(url, { entry: 'code/Sort.kt' })).json();
     expect(entry).toMatchObject({ filename: 'Sort.kt', readable: true, text: 'fun sort() = Unit' });
+
+    const clip = (await read(url, { entry: 'clip.mp4' })).json();
+    expect(clip).toMatchObject({ filename: 'clip.mp4', readable: false });
     expect(world.moodle.requests.every((r) => r.method === 'GET')).toBe(true);
+  });
+
+  it('tells what a file of unknown type is from its content', async () => {
+    const text = (await read(fileUrl('Main.kt', 311))).json();
+    expect(text).toMatchObject({ mime_type: 'text/plain', readable: true, text: 'fun main() = Unit' });
+
+    const image = await read(fileUrl('picture', 312));
+    expect(image.result.content[0]).toMatchObject({ type: 'image', mimeType: 'image/png' });
+
+    const binary = (await read(fileUrl('blob.dat', 313))).json();
+    expect(binary).toMatchObject({ readable: false });
+    expect(binary.note).toContain('Cannot extract text');
   });
 
   it('keeps ZIP entry names and contents out of the logs', async () => {

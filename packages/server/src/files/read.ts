@@ -77,24 +77,6 @@ const TEXT_EXTENSIONS: ReadonlySet<string> = new Set([
   'srt',
   'vtt',
   'rtf',
-  'kt',
-  'kts',
-  'swift',
-  'gradle',
-  'scala',
-  'dart',
-  'lua',
-  'pl',
-  'jsx',
-  'tsx',
-  'vue',
-  'css',
-  'svg',
-  'properties',
-  'cfg',
-  'conf',
-  'bat',
-  'ps1',
 ]);
 
 export interface ReadOptions {
@@ -133,7 +115,9 @@ export function classify(meta: Pick<DownloadedFile, 'mimeType' | 'filename'>): K
   if (type === 'text/html' || type === 'application/xhtml+xml') return 'html';
   if (IMAGE_TYPES.has(type)) return 'image';
   if (ZIP_TYPES.has(type)) return 'zip';
-  if (type.startsWith('text/') || TEXT_APPLICATION_TYPES.has(type)) return 'text';
+  // `+xml` and `+json` are structured syntax suffixes (SVG, Atom, ...), text by definition.
+  if (type.startsWith('text/') || /\+(xml|json)$/.test(type) || TEXT_APPLICATION_TYPES.has(type))
+    return 'text';
   // Moodle labels much source code with odd types, so trust the extension, but never over media.
   const media = type.startsWith('video/') || type.startsWith('audio/');
   return !media && TEXT_EXTENSIONS.has(extensionOf(meta.filename)) ? 'text' : null;

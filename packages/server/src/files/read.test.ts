@@ -142,7 +142,8 @@ describe('classify', () => {
   it.each([
     ['a.zip', 'application/zip', 'zip'],
     ['a.zip', 'application/octet-stream', 'zip'],
-    ['a.kt', 'application/octet-stream', 'text'],
+    ['a.kt', 'application/octet-stream', null],
+    ['a.kt', 'text/x-kotlin', 'text'],
     ['a.svg', 'image/svg+xml', 'text'],
     ['a.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'xlsx'],
     ['a.zip', 'application/x-zip-compressed', 'zip'],

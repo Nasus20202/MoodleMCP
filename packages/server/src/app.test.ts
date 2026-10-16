@@ -155,9 +155,9 @@ describe('read_file', () => {
         entry_count: 4,
       });
       expect(json().entries).toEqual([
-        { path: 'src/Main.kt', size_bytes: 26, type: null, readable: true },
+        { path: 'src/Main.kt', size_bytes: 26, type: null, readable: 'unknown' },
         { path: 'notes.txt', size_bytes: 9, type: null, readable: true },
-        { path: 'clip.mp4', size_bytes: 4, type: null, readable: false },
+        { path: 'clip.mp4', size_bytes: 4, type: null, readable: 'unknown' },
         { path: 'inner.zip', size_bytes: inner.length, type: 'application/zip', readable: false },
       ]);
       expect(moodle.calls).toHaveLength(1);

@@ -134,6 +134,21 @@ export const FILES: Record<string, MockFile> = {
     }),
     type: 'application/zip',
   },
+  '/webservice/pluginfile.php/311/mod_resource/content/1/Main.kt': {
+    course: COURSE_ALG,
+    body: 'fun main() = Unit',
+    type: 'application/octet-stream',
+  },
+  '/webservice/pluginfile.php/312/mod_resource/content/1/picture': {
+    course: COURSE_ALG,
+    body: PNG_BYTES,
+    type: 'application/octet-stream',
+  },
+  '/webservice/pluginfile.php/313/mod_resource/content/1/blob.dat': {
+    course: COURSE_ALG,
+    body: new Uint8Array([0, 1, 2, 3, 255, 254]),
+    type: 'application/octet-stream',
+  },
   '/webservice/pluginfile.php/308/mod_resource/content/1/long.txt': {
     course: COURSE_ALG,
     body: 'a'.repeat(2500) + 'b'.repeat(2500),
