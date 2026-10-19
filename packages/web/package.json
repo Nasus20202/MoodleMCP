@@ -11,7 +11,7 @@
   "dependencies": {
     "@moodle-mcp/shared": "workspace:*",
     "svelte": "5.57.2",
-    "zxing-wasm": "3.1.5"
+    "zxing-wasm": "3.1.6"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "7.3.1",
