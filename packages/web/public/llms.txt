@@ -1,0 +1,145 @@
+# Moodle MCP
+
+> A read-only MCP (Model Context Protocol) server that lets an AI agent read a Moodle site on behalf of one user: their courses, course materials, assignments, deadlines, grades, quizzes and forums. It uses that user's own Moodle mobile token, is stateless, and stores nothing. It cannot change anything in Moodle.
+
+Once connected, an agent can answer questions such as "what is due this week?", "summarise lecture 3" or "what did I score on the last quiz?". It works with any Moodle site that has the mobile web service enabled. Every tool is read-only: nothing is submitted, posted, edited or deleted.
+
+## Where things are
+
+These paths are relative to the server: the origin this file was served from. In the examples below, `<your-host>` stands for that origin.
+
+- `/mcp`: the MCP endpoint (Streamable HTTP). Connect the agent here.
+- `/api/tools`: the tool catalogue, as JSON. Each entry has a name, a description, the arguments and a read-only flag. Read it before calling tools: the descriptions say which tool to call next and where each id comes from.
+- `/api/config`: JSON with `oauth` (`true` when OAuth sign-in is available) and `moodleUrl` (the Moodle site used when none is chosen).
+- `/`: the setup page for people. It explains how to get a Moodle token and has config snippets for common agents.
+
+## How to proceed
+
+1. Fetch `/api/config` to see whether OAuth is available and which Moodle site is the default.
+2. Connect with one of the two options below. Ask the user for their Moodle token if you do not have one.
+3. Fetch `/api/tools` and follow its descriptions. Start by listing the user's courses, since most other tools need a course id from that list.
+4. Files in tool results come with a `fileurl`. Pass it to the file-reading tool from the catalogue to read the file.
+
+### Option A: static header
+
+Send the Moodle token as `Authorization: Bearer <your token>`. `X-Moodle-Token: <your token>` also works. Replace `<your token>` with the user's token.
+
+Generic JSON config:
+
+```json
+{
+  "mcpServers": {
+    "moodle": {
+      "type": "http",
+      "url": "https://<your-host>/mcp",
+      "headers": {
+        "Authorization": "Bearer <your token>"
+      }
+    }
+  }
+}
+```
+
+Claude Code file (`.mcp.json`) uses the same JSON as the generic config.
+
+Claude Code command:
+
+```sh
+claude mcp add --transport http moodle https://<your-host>/mcp \
+  --header "Authorization: Bearer <your token>"
+```
+
+OpenCode file (`opencode.json`):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "moodle": {
+      "type": "remote",
+      "url": "https://<your-host>/mcp",
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer <your token>"
+      }
+    }
+  }
+}
+```
+
+OpenCode command: `opencode mcp add`. It is interactive and cannot set headers: choose "Remote", enter the URL, then add the headers in the file above.
+
+Codex file (`~/.codex/config.toml`):
+
+```toml
+[mcp_servers.moodle]
+url = "https://<your-host>/mcp"
+http_headers = { "Authorization" = "Bearer <your token>" }
+```
+
+Codex command. It reads the token from an environment variable, so the token does not sit in a config file:
+
+```sh
+export MOODLE_MCP_TOKEN=<your token>
+codex mcp add moodle --url https://<your-host>/mcp --bearer-token-env-var MOODLE_MCP_TOKEN
+```
+
+### Option B: OAuth
+
+For clients that cannot send headers, such as ChatGPT or claude.ai connectors. Use the config below with no headers. The client opens a consent page on the server, where the user pastes their Moodle token and, if needed, the Moodle site address. Dynamic client registration is supported, and the client ID and secret can be left empty.
+
+Generic JSON config (Claude Code file `.mcp.json` is the same):
+
+```json
+{
+  "mcpServers": {
+    "moodle": {
+      "type": "http",
+      "url": "https://<your-host>/mcp"
+    }
+  }
+}
+```
+
+Claude Code command: `claude mcp add --transport http moodle https://<your-host>/mcp`. Then run `/mcp` in Claude Code and choose "Authenticate".
+
+OpenCode file (`opencode.json`):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "moodle": {
+      "type": "remote",
+      "url": "https://<your-host>/mcp"
+    }
+  }
+}
+```
+
+OpenCode command: `opencode mcp auth moodle`. Run it after saving the file.
+
+Codex file (`~/.codex/config.toml`):
+
+```toml
+[mcp_servers.moodle]
+url = "https://<your-host>/mcp"
+```
+
+Codex command: `codex mcp add moodle --url https://<your-host>/mcp`. Codex detects OAuth and opens the sign-in. Later, run `codex mcp login moodle` to sign in again.
+
+OAuth access tokens last 12 hours and refresh tokens last 90 days. The server cannot revoke a single one, so anyone holding an access token can read the user's Moodle until it expires.
+
+### Choosing a Moodle site
+
+Without a site setting, the server uses its default Moodle site (`moodleUrl` in `/api/config`). To use another site with Option A, also send the header `X-Moodle-URL: https://<moodle-site>`. The command examples above cannot set that header, so use the file examples for a custom site. With Option B, the user enters the site on the consent page. The site must be an https address. If the server refuses it, it only allows certain sites: use the default, or ask the person who runs the server.
+
+### Moodle tokens
+
+Each user needs their own Moodle mobile token. The setup page at `/` explains how to get one: sign in with the university account, or scan the QR code from the Moodle mobile app if the site has QR login.
+
+Treat the token like a password. Do not paste it into shared chats, and do not commit a config file that contains it. Anyone who has it can read the user's Moodle account through this server.
+
+## Source
+
+- [Source code](https://github.com/Nasus20202/MoodleMCP): the repository, with a README for the project.
