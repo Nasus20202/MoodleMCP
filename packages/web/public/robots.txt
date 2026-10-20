@@ -1,0 +1,7 @@
+# The setup page and llms.txt are public. The MCP endpoint, OAuth and the API are for clients, not search engines.
+# /connect is not listed: it sends X-Robots-Tag: noindex, which crawlers can only see if they are allowed to fetch it.
+User-agent: *
+Disallow: /api/
+Disallow: /mcp
+Disallow: /oauth/
+Disallow: /.well-known/
