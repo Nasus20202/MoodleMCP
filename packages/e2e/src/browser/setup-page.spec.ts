@@ -167,6 +167,13 @@ test.describe('setup page (no OAuth)', () => {
 });
 
 test.describe('routing', () => {
+  test('serves robots.txt as a plain file, not the app', async ({ request }) => {
+    const res = await request.get('/robots.txt');
+    expect(res.status()).toBe(200);
+    expect(res.headers()['content-type']).toContain('text/plain');
+    expect(await res.text()).toContain('Disallow: /mcp');
+  });
+
   test('answers unknown pages with the not-found page, not indexed, and a way back', async ({ page }) => {
     const response = await page.goto('/no/such/page');
     expect(response?.status()).toBe(200);

@@ -147,3 +147,9 @@ test('cannot be framed by another site (clickjacking protection)', async ({ page
   expect(response.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
   expect(response.headers()['referrer-policy']).toBe('no-referrer');
 });
+
+test('asks search engines not to index it', async ({ page, stack }) => {
+  await startAuthorization(page, stack);
+  const response = await page.request.get(page.url());
+  expect(response.headers()['x-robots-tag']).toBe('noindex');
+});
