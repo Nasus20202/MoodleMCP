@@ -1,6 +1,7 @@
-import type { ReadMode } from '../files/mode.ts';
+import { ReadMode } from '../files/mode.ts';
+import type { PdfChunk } from '../files/pdf.ts';
 import { pageText } from '../files/read.ts';
-import type { Logger } from '../logger.ts';
+import type { LogFields, Logger } from '../logger.ts';
 import type { DownloadedFile } from '../moodle/client.ts';
 import { jsonContent, type ToolContent } from './define.ts';
 
@@ -21,6 +22,41 @@ export const joinNotes = (...notes: (string | undefined)[]) => notes.filter(Bool
 /** Logs a file that is not read, and why. */
 export const logUnreadable = (logger: Logger, mime: string, reason: string) =>
   logger.info('file not readable', { mime, reason });
+
+/** Logs a file our own parsers read: sizes and timing only, never its name or text. */
+export function logParsed(
+  logger: Logger,
+  file: DownloadedFile,
+  format: string,
+  started: number,
+  fields: LogFields = {},
+) {
+  logger.info('file parsed', {
+    format,
+    mode: ReadMode.Extract,
+    mime: file.mimeType,
+    bytes: file.bytes.byteLength,
+    ...fields,
+    ms: Date.now() - started,
+  });
+}
+
+/** Logs a file our parsers could not read, by the error's class; `started` adds the time spent. */
+export function logParseFailed(
+  logger: Logger,
+  file: DownloadedFile,
+  format: string,
+  error: unknown,
+  started?: number,
+) {
+  logger.warn('file parse failed', {
+    format,
+    mime: file.mimeType,
+    bytes: file.bytes.byteLength,
+    ms: started === undefined ? undefined : Date.now() - started,
+    error: errorName(error),
+  });
+}
 
 /** The class of an error, for the logs. Its message is left out: it can name the file. */
 export const errorName = (error: unknown) => (error instanceof Error ? error.name : 'unknown');
@@ -58,4 +94,53 @@ export function textResult(
     note: joinNotes(reading.note, empty),
     text: slice,
   });
+}
+
+/** The pages of a PDF read in extract mode, paged by page and then by characters. */
+export function pdfResult(
+  file: DownloadedFile,
+  { offset, page }: { offset: number; page: number },
+  chunk: PdfChunk,
+  note: string | undefined,
+): ToolContent[] {
+  const noText = chunk.text.replace(/--- Page \d+ ---/g, '').trim() === '';
+  return jsonContent({
+    ...describeFile(file),
+    readable: true,
+    format: 'pdf',
+    mode: ReadMode.Extract,
+    pages: chunk.pages,
+    page,
+    offset,
+    first_page: chunk.firstPage,
+    last_page: chunk.lastPage,
+    next_page: chunk.next?.page ?? null,
+    next_offset: chunk.next?.offset ?? null,
+    note: joinNotes(
+      note,
+      page > chunk.pages
+        ? `page is past the end of the document, which has ${chunk.pages} pages.`
+        : noText
+          ? 'No text found on these pages. A scanned or image-only document has no text layer.'
+          : undefined,
+    ),
+    text: chunk.text,
+  });
+}
+
+/** An image returned as an image block, with the usual description after it. */
+export function imageResult(
+  file: DownloadedFile,
+  image: { base64: string; mimeType: string },
+  note: string | undefined,
+): ToolContent[] {
+  return [
+    { type: 'image', data: image.base64, mimeType: image.mimeType },
+    ...jsonContent({
+      ...describeFile(file),
+      readable: true,
+      mode: ReadMode.Extract,
+      note: joinNotes(note, 'The image is attached.'),
+    }),
+  ];
 }

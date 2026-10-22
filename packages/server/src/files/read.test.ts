@@ -2,7 +2,8 @@ import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 
 import type { DownloadedFile } from '../moodle/client.ts';
-import { classify, pageText, readFile } from './read.ts';
+import { tinyPdf } from '../test-utils.ts';
+import { classify, pageText, readFile, unsupportedReason } from './read.ts';
 import { htmlToText } from './text.ts';
 
 const file = (filename: string, bytes: Uint8Array | string, mimeType = ''): DownloadedFile => ({
@@ -12,26 +13,16 @@ const file = (filename: string, bytes: Uint8Array | string, mimeType = ''): Down
   skipped: false,
 });
 
-/** A one-page PDF with a text layer, written by hand (pdf.js rebuilds the missing xref table). */
-function tinyPdf(text: string): Uint8Array {
-  const stream = `BT /F1 24 Tf 72 700 Td (${text}) Tj ET`;
-  return strToU8(
-    [
-      '%PDF-1.4',
-      '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj',
-      '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj',
-      '3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj',
-      `4 0 obj<</Length ${stream.length}>>stream\n${stream}\nendstream endobj`,
-      '5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj',
-      'trailer<</Root 1 0 R/Size 6>>',
-      '%%EOF',
-    ].join('\n'),
-  );
+/** Reads `file` as read_file does: by the kind `classify` gives it. */
+function read(file: DownloadedFile) {
+  const kind = classify(file);
+  if (kind === null || kind === 'zip') throw new Error(`not a document: ${String(kind)}`);
+  return readFile(file, kind);
 }
 
 describe('readFile', () => {
   it('extracts text from a PDF', async () => {
-    const result = await readFile(file('a.pdf', tinyPdf('Hello PDF'), 'application/pdf'));
+    const result = await read(file('a.pdf', tinyPdf('Hello PDF'), 'application/pdf'));
     expect(result).toEqual({
       kind: 'pdf',
       chunk: { text: '--- Page 1 ---\nHello PDF', pages: 1, firstPage: 1, lastPage: 1, next: null },
@@ -43,7 +34,7 @@ describe('readFile', () => {
       '<w:document><w:body><w:p><w:r><w:t>First &amp; foremost</w:t></w:r></w:p>' +
       '<w:p><w:r><w:t>Second</w:t></w:r><w:tab/><w:r><w:t>line</w:t></w:r></w:p></w:body></w:document>';
     const docx = zipSync({ 'word/document.xml': strToU8(xml), 'word/styles.xml': strToU8('<ignored/>') });
-    const result = await readFile(file('a.docx', docx));
+    const result = await read(file('a.docx', docx));
     expect(result).toEqual({ kind: 'text', format: 'docx', text: 'First & foremost\nSecond line' });
   });
 
@@ -55,7 +46,7 @@ describe('readFile', () => {
       'ppt/slides/slide1.xml': strToU8(slide('One')),
       'ppt/notesSlides/notesSlide2.xml': strToU8(slide('say hi')),
     });
-    const result = await readFile(file('a.pptx', pptx));
+    const result = await read(file('a.pptx', pptx));
     expect(result).toEqual({
       kind: 'text',
       format: 'pptx',
@@ -84,7 +75,7 @@ describe('readFile', () => {
       ),
       'xl/worksheets/sheet2.xml': strToU8(sheet('')),
     });
-    const result = await readFile(file('a.xlsx', xlsx));
+    const result = await read(file('a.xlsx', xlsx));
     expect(result).toEqual({
       kind: 'text',
       format: 'xlsx',
@@ -95,46 +86,45 @@ describe('readFile', () => {
 
   it('refuses an archive that inflates beyond the limit', async () => {
     const bomb = zipSync({ 'word/document.xml': new Uint8Array(41 * 1024 * 1024) });
-    await expect(readFile(file('bomb.docx', bomb))).rejects.toThrow(/too large/);
+    await expect(read(file('bomb.docx', bomb))).rejects.toThrow(/too large/);
   });
 
   it('turns HTML into text', async () => {
-    const result = await readFile(
+    const result = await read(
       file('index.html', '<h1>Title</h1><p>One<br>two</p><script>x()</script>', 'text/html'),
     );
     expect(result).toMatchObject({ kind: 'text', format: 'html', text: 'Title\nOne\ntwo' });
   });
 
   it('reads plain text and code', async () => {
-    expect(await readFile(file('n.txt', 'zażółć', 'text/plain'))).toMatchObject({ text: 'zażółć' });
-    expect(await readFile(file('main.py', 'print(1)', 'text/x-python'))).toMatchObject({
+    expect(await read(file('n.txt', 'zażółć', 'text/plain'))).toMatchObject({ text: 'zażółć' });
+    expect(await read(file('main.py', 'print(1)', 'text/x-python'))).toMatchObject({
       kind: 'text',
       format: 'py',
     });
   });
 
   it('trusts the extension when the server only says octet-stream', async () => {
-    const result = await readFile(file('a.pdf', tinyPdf('Octet'), 'application/octet-stream'));
+    const result = await read(file('a.pdf', tinyPdf('Octet'), 'application/octet-stream'));
     expect(result.kind).toBe('pdf');
   });
 
   it('returns small images as base64 and refuses large ones', async () => {
-    const png = await readFile(file('a.png', new Uint8Array([137, 80, 78, 71]), 'image/png'));
+    const png = await read(file('a.png', new Uint8Array([137, 80, 78, 71]), 'image/png'));
     expect(png).toEqual({ kind: 'image', mimeType: 'image/png', base64: 'iVBORw==' });
 
-    const big = await readFile(file('big.png', new Uint8Array(5 * 1024 * 1024), 'image/png'));
-    expect(big.kind).toBe('unsupported');
+    const big = await read(file('big.png', new Uint8Array(5 * 1024 * 1024), 'image/png'));
+    expect(big.kind === 'too-large' && big.reason).toContain('4 MB');
   });
 
   it('encodes large images without overflowing the stack', async () => {
-    const result = await readFile(file('a.jpg', new Uint8Array(3 * 1024 * 1024), 'image/jpeg'));
+    const result = await read(file('a.jpg', new Uint8Array(3 * 1024 * 1024), 'image/jpeg'));
     expect(result.kind === 'image' && result.base64.length).toBe(4 * 1024 * 1024);
   });
 
-  it('says what it cannot read', async () => {
-    const result = await readFile(file('v.mp4', 'x', 'video/mp4'));
-    expect(result.kind).toBe('unsupported');
-    expect(result.kind === 'unsupported' && result.reason).toContain('video/mp4');
+  it('extracts what the caller classified, whatever the name says', async () => {
+    const result = await readFile(file('notes.bin', 'plain words', 'application/octet-stream'), 'text');
+    expect(result).toMatchObject({ kind: 'text', text: 'plain words' });
   });
 });
 
@@ -154,6 +144,20 @@ describe('classify', () => {
     ['a.csv', 'text/csv', 'text'],
   ])('%s (%s) -> %s', (filename, mimeType, expected) => {
     expect(classify({ filename, mimeType })).toBe(expected);
+  });
+});
+
+describe('unsupportedReason', () => {
+  it('names the type it cannot read and what it can', () => {
+    const reason = unsupportedReason({ filename: 'v.mp4', mimeType: 'video/mp4' });
+    expect(reason).toContain('video/mp4');
+    expect(reason).toContain('mode resource');
+  });
+
+  it('falls back to the extension when the server says octet-stream', () => {
+    expect(unsupportedReason({ filename: 'a.pdf', mimeType: 'application/octet-stream' })).toContain(
+      'application/pdf',
+    );
   });
 });
 

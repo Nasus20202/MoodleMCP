@@ -3,7 +3,14 @@ import * as z from 'zod/v4';
 import { classifyConversionFailure, conversionFailureNote, toMarkdown } from '../files/markdown.ts';
 import { chooseMode, type ModeChoice, ReadMode } from '../files/mode.ts';
 import { MAX_PAGES_PER_CALL } from '../files/pdf.ts';
-import { classify, effectiveType, readFile, toBase64, unsupportedReason } from '../files/read.ts';
+import {
+  classify,
+  type DocumentKind,
+  effectiveType,
+  readFile,
+  toBase64,
+  unsupportedReason,
+} from '../files/read.ts';
 import { encodingNote, judge, readableByContent, withSniffedType } from '../files/sniff.ts';
 import type { DownloadedFile } from '../moodle/client.ts';
 import { defineCustomTool, jsonContent, type ToolContent, type ToolContext } from './define.ts';
@@ -13,9 +20,13 @@ import {
   DEFAULT_CHARS,
   describeFile,
   errorName,
+  imageResult,
   joinNotes,
+  logParsed,
+  logParseFailed,
   logUnreadable,
   MAX_CHARS,
+  pdfResult,
   textResult,
 } from './read-file-results.ts';
 
@@ -69,6 +80,8 @@ const input = z.object({
 });
 
 type Input = z.output<typeof input>;
+/** The arguments of a read that turns the file into text, which is every mode but resource. */
+type TextInput = Input & { mode: Exclude<ReadMode, typeof ReadMode.Resource> };
 
 export const readFileTool = defineCustomTool({
   name: ToolName.ReadFile,
@@ -87,7 +100,8 @@ export const readFileTool = defineCustomTool({
     '20 MB.',
   input,
   async run(context, args) {
-    return args.mode === ReadMode.Resource ? readResource(context, args) : readText(context, args);
+    const { mode } = args;
+    return mode === ReadMode.Resource ? readResource(context, args) : readText(context, { ...args, mode });
   },
 });
 
@@ -108,7 +122,7 @@ async function readResource({ client, logger }: ToolContext, { file_url }: Input
   ];
 }
 
-async function readText(context: ToolContext, args: Input): Promise<ToolContent[]> {
+async function readText(context: ToolContext, args: TextInput): Promise<ToolContent[]> {
   // A file of unknown type is looked into: its first bytes say whether it is worth reading.
   const file = await context.client.download(args.file_url, MAX_FILE_BYTES, judge, readableByContent);
   return readDocument(context, withSniffedType(file), args, {});
@@ -125,7 +139,7 @@ interface Origin {
 async function readDocument(
   context: ToolContext,
   file: DownloadedFile,
-  args: Input,
+  args: TextInput,
   origin: Origin,
 ): Promise<ToolContent[]> {
   const { logger, markdown } = context;
@@ -161,8 +175,7 @@ async function readDocument(
       note: joinNotes(origin.note, '`entry` is only used for ZIP archives and was ignored.'),
     };
   }
-  const requested = args.mode === ReadMode.Resource ? ReadMode.Auto : args.mode;
-  let choice: ModeChoice = chooseMode(requested, format, {
+  let choice: ModeChoice = chooseMode(args.mode, format, {
     canConvert: markdown !== undefined,
     page: args.page,
   });
@@ -202,7 +215,7 @@ async function readDocument(
 async function readEntry(
   context: ToolContext,
   archive: DownloadedFile,
-  args: Input,
+  args: TextInput,
   path: string,
 ): Promise<ToolContent[]> {
   const opening = openEntry(archive, path, context.logger);
@@ -216,111 +229,59 @@ async function readEntry(
 async function extract(
   { logger }: ToolContext,
   file: DownloadedFile,
-  format: NonNullable<ReturnType<typeof classify>>,
-  args: Input,
+  format: DocumentKind,
+  args: TextInput,
   modeNote: string | undefined,
 ): Promise<ToolContent[]> {
   const { offset, page, max_chars } = args;
-  const meta = describeFile(file);
   const started = Date.now();
   let reading;
   try {
-    reading = await readFile(file, { page, offset, maxChars: max_chars });
+    reading = await readFile(file, format, { page, offset, maxChars: max_chars });
   } catch (error) {
     // Corrupt, encrypted or oversized-when-inflated files: report to the model, don't crash the call.
-    logger.warn('file parse failed', {
-      format,
-      mime: file.mimeType,
-      bytes: meta.size_bytes,
-      ms: Date.now() - started,
-      error: errorName(error),
-    });
+    logParseFailed(logger, file, format, error, started);
     return jsonContent({
-      ...meta,
+      ...describeFile(file),
       readable: false,
       note: 'The file could not be parsed: it may be corrupt, password-protected or in an unusual format.',
     });
   }
 
-  if (reading.kind === 'unsupported') {
-    logUnreadable(logger, file.mimeType, 'too large to return');
-    return jsonContent({ ...meta, readable: false, note: joinNotes(modeNote, reading.reason) });
-  }
-  if (reading.kind === 'image') {
-    logger.info('file parsed', {
-      format,
-      mode: ReadMode.Extract,
-      mime: file.mimeType,
-      bytes: meta.size_bytes,
-      ms: Date.now() - started,
-    });
-    const image: ToolContent = { type: 'image', data: reading.base64, mimeType: reading.mimeType };
-    return [
-      image,
-      ...jsonContent({
-        ...meta,
-        readable: true,
+  switch (reading.kind) {
+    case 'too-large':
+      logUnreadable(logger, file.mimeType, 'too large to return');
+      return jsonContent({
+        ...describeFile(file),
+        readable: false,
+        note: joinNotes(modeNote, reading.reason),
+      });
+    case 'image':
+      logParsed(logger, file, format, started);
+      return imageResult(file, reading, modeNote);
+    case 'pdf': {
+      const { chunk } = reading;
+      logParsed(logger, file, format, started, {
+        pages: chunk.pages,
+        pagesRead:
+          chunk.firstPage === undefined ? 0 : (chunk.lastPage ?? chunk.firstPage) - chunk.firstPage + 1,
+        chars: chunk.text.length,
+        truncated: chunk.next !== null,
+      });
+      return pdfResult(file, args, chunk, modeNote);
+    }
+    case 'text':
+      logParsed(logger, file, format, started, {
+        pages: reading.pages,
+        chars: reading.text.length,
+        truncated: offset + max_chars < reading.text.length,
+      });
+      return textResult(file, args, {
+        format: reading.format,
         mode: ReadMode.Extract,
-        note: joinNotes(modeNote, 'The image is attached.'),
-      }),
-    ];
+        text: reading.text,
+        pages: reading.pages,
+        note: joinNotes(modeNote, reading.encoding && encodingNote(reading.encoding)),
+      });
   }
-
-  if (reading.kind === 'pdf') {
-    const { chunk } = reading;
-    const pagesRead =
-      chunk.firstPage === undefined ? 0 : (chunk.lastPage ?? chunk.firstPage) - chunk.firstPage + 1;
-    logger.info('file parsed', {
-      format,
-      mode: ReadMode.Extract,
-      mime: file.mimeType,
-      bytes: meta.size_bytes,
-      pages: chunk.pages,
-      pagesRead,
-      chars: chunk.text.length,
-      truncated: chunk.next !== null,
-      ms: Date.now() - started,
-    });
-    const noText = chunk.text.replace(/--- Page \d+ ---/g, '').trim() === '';
-    return jsonContent({
-      ...meta,
-      readable: true,
-      format: 'pdf',
-      mode: ReadMode.Extract,
-      pages: chunk.pages,
-      page,
-      offset,
-      first_page: chunk.firstPage,
-      last_page: chunk.lastPage,
-      next_page: chunk.next?.page ?? null,
-      next_offset: chunk.next?.offset ?? null,
-      note: joinNotes(
-        modeNote,
-        page > chunk.pages
-          ? `page is past the end of the document, which has ${chunk.pages} pages.`
-          : noText
-            ? 'No text found on these pages. A scanned or image-only document has no text layer.'
-            : undefined,
-      ),
-      text: chunk.text,
-    });
-  }
-
-  logger.info('file parsed', {
-    format,
-    mode: ReadMode.Extract,
-    mime: file.mimeType,
-    bytes: meta.size_bytes,
-    pages: reading.pages,
-    chars: reading.text.length,
-    truncated: offset + max_chars < reading.text.length,
-    ms: Date.now() - started,
-  });
-  return textResult(file, args, {
-    format: reading.format,
-    mode: ReadMode.Extract,
-    text: reading.text,
-    pages: reading.pages,
-    note: joinNotes(modeNote, reading.encoding && encodingNote(reading.encoding)),
-  });
 }

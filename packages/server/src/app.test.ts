@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { type AppDeps, createApp } from './app.ts';
 import { tokenFingerprint } from './http/client-info.ts';
 import { createLogger } from './logger.ts';
-import { fakeMarkdown, fakeMoodle, type RecordedCall, TEST_SITE, testConfig } from './test-utils.ts';
+import { fakeMarkdown, fakeMoodle, type RecordedCall, TEST_SITE, testConfig, tinyPdf } from './test-utils.ts';
 import { ToolName } from './tools/names.ts';
 
 const MCP_HEADERS = {
@@ -312,6 +312,53 @@ describe('read_file', () => {
       format: 'pdf',
       mime: 'application/pdf',
       bytes: 9,
+    });
+  });
+
+  it('logs the pages it read from a PDF', async () => {
+    const { json, logs } = await readFile(serve(tinyPdf('Hello PDF'), 'application/pdf'));
+    expect(json()).toMatchObject({ format: 'pdf', mode: 'extract', first_page: 1, next_page: null });
+    const line = logLines(logs).find((l) => l.msg === 'file parsed');
+    expect(line).toMatchObject({
+      level: 'info',
+      format: 'pdf',
+      mode: 'extract',
+      mime: 'application/pdf',
+      pages: 1,
+      pagesRead: 1,
+      truncated: false,
+    });
+    expect(typeof line?.ms).toBe('number');
+    expect(logs.join('\n')).not.toContain('Hello PDF');
+  });
+
+  it('logs an image it returns', async () => {
+    const { logs } = await readFile(serve(new Uint8Array([137, 80, 78, 71]), 'image/png'));
+    expect(logLines(logs).find((l) => l.msg === 'file parsed')).toMatchObject({
+      format: 'image',
+      mode: 'extract',
+      mime: 'image/png',
+      bytes: 4,
+    });
+  });
+
+  it('logs an image too large to return as not readable', async () => {
+    const { json, logs } = await readFile(serve(new Uint8Array(5 * 1024 * 1024), 'image/png'));
+    expect(json()).toMatchObject({ readable: false });
+    expect(String(json().note)).toContain('4 MB');
+    expect(logLines(logs).find((l) => l.msg === 'file not readable')).toMatchObject({
+      mime: 'image/png',
+      reason: 'too large to return',
+    });
+  });
+
+  it('logs an archive it cannot open', async () => {
+    const { logs } = await readFile(serve('PK not really', 'application/zip'));
+    expect(logLines(logs).find((l) => l.msg === 'file parse failed')).toMatchObject({
+      level: 'warn',
+      format: 'zip',
+      mime: 'application/zip',
+      bytes: 13,
     });
   });
 
