@@ -6,10 +6,6 @@ import { listZip, unzipEntry } from './zip.ts';
 /** Bytes looked at when deciding whether a file is text. */
 const SNIFF_BYTES = 8192;
 
-/** Types a server says when it does not know the real one. */
-export const isGenericType = (type: string) =>
-  type === '' || type === 'application/octet-stream' || type === 'application/force-download';
-
 interface Signature {
   type: string;
   /** Where the bytes start; the formats below all begin at 0 except MP4's `ftyp`. */
