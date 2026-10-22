@@ -6,6 +6,8 @@
   "compatibility_flags": ["nodejs_compat"],
   "upload_source_maps": true,
   "routes": [{ "pattern": "moodlemcp.nasus.dev", "custom_domain": true }],
+  // Smart Placement: runs the Worker near the Moodle sites it calls, not near the user. Previews use this too.
+  "placement": { "mode": "smart" },
   "assets": {
     "directory": "packages/web/dist",
     "not_found_handling": "single-page-application",
