@@ -21,6 +21,7 @@
     "enabled": true,
     "logs": { "head_sampling_rate": 1 },
     "traces": { "enabled": true, "head_sampling_rate": 1 },
+    "issues": { "enabled": true },
   },
   "vars": {
     "MOODLE_URL": "https://enauczanie.pg.edu.pl/2025",
