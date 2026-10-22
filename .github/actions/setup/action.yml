@@ -1,0 +1,16 @@
+name: Set up pnpm and Node
+description: Installs the pnpm and Node versions the repository pins, then the locked dependencies. Run after checkout.
+
+runs:
+  using: composite
+  steps:
+    # Reads the pnpm version from "packageManager" in package.json.
+    - uses: pnpm/action-setup@v6
+
+    - uses: actions/setup-node@v7
+      with:
+        node-version-file: .node-version
+        cache: pnpm
+
+    - run: pnpm install --frozen-lockfile
+      shell: bash
