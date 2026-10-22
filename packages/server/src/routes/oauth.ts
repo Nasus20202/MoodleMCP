@@ -6,13 +6,14 @@ import {
   LinkError,
   QRKind,
 } from '@moodle-mcp/shared';
+import type { Context } from 'hono';
 import { Hono } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import * as z from 'zod/v4';
 
+import { limitBody } from '../http/body-limit.ts';
 import type { AppEnv } from '../http/context.ts';
-import { HttpError, jsonError } from '../http/errors.ts';
+import { jsonError } from '../http/errors.ts';
 import type { Logger } from '../logger.ts';
 import { MoodleClient } from '../moodle/client.ts';
 import { MoodleError, MoodleTransportError } from '../moodle/errors.ts';
@@ -34,12 +35,6 @@ export const OAUTH_PATHS = {
 const MAX_REDIRECT_URIS = 10;
 /** Registration, consent and token requests are small forms or JSON; anything bigger is refused unread. */
 const MAX_BODY_BYTES = 16 * 1024;
-const limitBody = bodyLimit({
-  maxSize: MAX_BODY_BYTES,
-  onError: () => {
-    throw new HttpError(413, 'Request too large');
-  },
-});
 /** Where the consent screen lives: a page of the setup app, which the OAuth endpoints below feed. */
 export const CONSENT_PATH = '/connect';
 
@@ -135,6 +130,12 @@ export function oauthRoutes(deps: {
     };
   }
 
+  /** Answers a GrantError as a 400 JSON error; anything else is rethrown. */
+  function grantFailure(c: Context<AppEnv>, error: unknown): Response {
+    if (error instanceof GrantError) return c.json(jsonError(error.message), 400);
+    throw error;
+  }
+
   async function redeem(body: z.output<typeof tokenRequest>) {
     if (body.grant_type === 'refresh_token') {
       const grant = await sealer.open(SealKind.Refresh, body.refresh_token, refreshSeal);
@@ -158,7 +159,7 @@ export function oauthRoutes(deps: {
       .use('/.well-known/*', cors())
       .use('/oauth/register', cors())
       .use('/oauth/token', cors())
-      .post('/oauth/*', limitBody)
+      .post('/oauth/*', limitBody(MAX_BODY_BYTES))
       .get('/.well-known/oauth-protected-resource/*', (c) => c.json(protectedResource(origin(c.req.url))))
       .get(OAUTH_PATHS.resourceMetadata, (c) => c.json(protectedResource(origin(c.req.url))))
       .get('/.well-known/oauth-authorization-server/*', (c) => c.json(serverMetadata(origin(c.req.url))))
@@ -206,8 +207,7 @@ export function oauthRoutes(deps: {
           const body: AuthorizeContextResponse = { redirectHost, defaultSite: policy.defaultUrl };
           return c.json(body);
         } catch (error) {
-          if (error instanceof GrantError) return c.json(jsonError(error.message), 400);
-          throw error;
+          return grantFailure(c, error);
         }
       })
       .post(OAUTH_PATHS.authorize, async (c) => {
@@ -223,8 +223,7 @@ export function oauthRoutes(deps: {
         try {
           redirectHost = await validateRequest(request);
         } catch (error) {
-          if (error instanceof GrantError) return c.json(jsonError(error.message), 400);
-          throw error;
+          return grantFailure(c, error);
         }
 
         const retry = (reason: string, message: string, site?: string) => {

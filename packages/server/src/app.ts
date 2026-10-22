@@ -37,8 +37,8 @@ export function createApp(config: AppConfig, deps: AppDeps = {}): Hono<AppEnv> {
       mcpRoutes(
         createMcpEndpoint({ fetch: fetchImpl, logger, markdown: deps.markdown }),
         policy,
-        sealer,
         logger,
+        sealer,
       ),
     )
     .route('/', apiRoutes({ policy, fetch: fetchImpl, oauth: sealer !== undefined }));

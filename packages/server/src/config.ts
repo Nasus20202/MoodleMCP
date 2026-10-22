@@ -25,7 +25,7 @@ export interface AppConfig {
   allowInsecureSites: boolean;
   logLevel: LogLevel;
   /** Key for the OAuth tokens (see `oauth/`). Without it OAuth is off and only raw Moodle tokens work. */
-  oauthSecret?: string;
+  oauthSecret?: string | undefined;
 }
 
 /** Reads and validates the Worker's environment bindings. Throws with a readable message when invalid. */
@@ -41,6 +41,6 @@ export function loadConfig(
       .filter(Boolean),
     allowInsecureSites: false,
     logLevel: parsed.data.LOG_LEVEL,
-    ...(parsed.data.OAUTH_SECRET && { oauthSecret: parsed.data.OAUTH_SECRET }),
+    oauthSecret: parsed.data.OAUTH_SECRET,
   };
 }

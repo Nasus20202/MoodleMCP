@@ -40,13 +40,13 @@ export async function clientInfoFrom(headers: Headers): Promise<ClientInfo> {
   const token = tokenFrom(headers);
   const tokenId = token ? await tokenFingerprint(token) : undefined;
   const userAgent = label(headers.get('User-Agent'));
-  return { ...(ip && { ip }), ...(tokenId && { tokenId }), ...(userAgent && { userAgent }) };
+  return { ip, tokenId, userAgent };
 }
 
 /** The software name and version an MCP client announces in its `initialize` request. */
 export interface McpClientInfo {
-  clientName?: string;
-  clientVersion?: string;
+  clientName?: string | undefined;
+  clientVersion?: string | undefined;
 }
 
 /**
@@ -64,7 +64,7 @@ export function mcpClientFrom(body: unknown): McpClientInfo | undefined {
       ?.clientInfo;
     const clientName = label(info?.name);
     const clientVersion = label(info?.version);
-    return { ...(clientName && { clientName }), ...(clientVersion && { clientVersion }) };
+    return { clientName, clientVersion };
   }
   return undefined;
 }

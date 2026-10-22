@@ -56,18 +56,20 @@ export interface ReadOptions {
 }
 
 export type FileReading =
-  | { kind: 'text'; format: string; text: string; pages?: number; encoding?: TextEncoding }
+  | { kind: 'text'; format: string; text: string; pages?: number | undefined; encoding?: TextEncoding }
   | { kind: 'pdf'; chunk: PdfChunk }
   | { kind: 'image'; mimeType: string; base64: string }
   | { kind: 'unsupported'; reason: string };
 
 const extensionOf = (filename: string) => /\.([a-z0-9]+)$/i.exec(filename)?.[1]?.toLowerCase() ?? '';
 
+/** Types a server says when it does not know the real one. */
+export const isGenericType = (type: string) =>
+  type === '' || type === 'application/octet-stream' || type === 'application/force-download';
+
 /** Prefers the extension when the server only says "octet-stream", which Moodle does for many files. */
 export function effectiveType({ mimeType, filename }: Pick<DownloadedFile, 'mimeType' | 'filename'>): string {
-  const generic =
-    mimeType === '' || mimeType === 'application/octet-stream' || mimeType === 'application/force-download';
-  return generic ? (MIME_BY_EXTENSION[extensionOf(filename)] ?? mimeType) : mimeType;
+  return isGenericType(mimeType) ? (MIME_BY_EXTENSION[extensionOf(filename)] ?? mimeType) : mimeType;
 }
 
 export type Kind = 'pdf' | 'docx' | 'pptx' | 'xlsx' | 'odf' | 'html' | 'image' | 'text' | 'zip';
@@ -124,7 +126,7 @@ export async function readFile(
     }
     case 'odf': {
       const { text, pages } = odfText(file.bytes, effectiveType(file));
-      return { kind: 'text', format: 'odf', text, ...(pages === undefined ? {} : { pages }) };
+      return { kind: 'text', format: 'odf', text, pages };
     }
     case 'html': {
       const { text, encoding } = decodeText(file.bytes);

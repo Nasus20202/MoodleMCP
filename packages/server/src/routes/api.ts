@@ -1,10 +1,9 @@
 import type { ConfigResponse, ExchangeResponse, ToolInfo, ToolsResponse } from '@moodle-mcp/shared';
 import { parseQrLogin } from '@moodle-mcp/shared';
 import { Hono } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
 import * as z from 'zod/v4';
 
-import { HttpError } from '../http/errors.ts';
+import { limitBody } from '../http/body-limit.ts';
 import { exchangeQrLogin } from '../moodle/qr-login.ts';
 import type { SitePolicy } from '../site-policy.ts';
 import { toolCatalog } from '../tools/catalog.ts';
@@ -29,25 +28,15 @@ export function apiRoutes(deps: { policy: SitePolicy; fetch: typeof fetch; oauth
       c.header('Cache-Control', `public, max-age=${CACHE_SECONDS}`);
       return c.json<ToolsResponse>({ tools: (catalog ??= toolCatalog()) });
     })
-    .post(
-      '/api/exchange',
-      // Counts the bytes actually received, so a chunked body without Content-Length cannot get past it.
-      bodyLimit({
-        maxSize: MAX_EXCHANGE_BODY_BYTES,
-        onError: () => {
-          throw new HttpError(413, 'Request too large');
-        },
-      }),
-      async (c) => {
-        // Trades the content of a Moodle app QR code for a token. Only sites allowed by the site policy are
-        // contacted, and the one-time key is neither stored nor logged.
-        const { qr } = exchangeRequest.parse(await c.req.json().catch(() => undefined));
-        const login = parseQrLogin(qr);
-        policy.validate(login.site);
-        const token = await exchangeQrLogin(login, deps.fetch);
+    .post('/api/exchange', limitBody(MAX_EXCHANGE_BODY_BYTES), async (c) => {
+      // Trades the content of a Moodle app QR code for a token. Only sites allowed by the site policy are
+      // contacted, and the one-time key is neither stored nor logged.
+      const { qr } = exchangeRequest.parse(await c.req.json().catch(() => undefined));
+      const login = parseQrLogin(qr);
+      policy.validate(login.site);
+      const token = await exchangeQrLogin(login, deps.fetch);
 
-        c.header('Cache-Control', 'no-store');
-        return c.json<ExchangeResponse>({ token });
-      },
-    );
+      c.header('Cache-Control', 'no-store');
+      return c.json<ExchangeResponse>({ token });
+    });
 }
