@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 
 import { MoodleError, MoodleTransportError } from '../moodle/errors.ts';
-import type { ToolContext, ToolDefinition } from './define.ts';
+import type { ToolContent, ToolContext, ToolDefinition } from './define.ts';
 import { TOOLS } from './definitions.ts';
 
 /** A tool call slower than this is logged as a warning. */
@@ -32,15 +32,24 @@ function failureKind(error: unknown): string {
   return 'internal';
 }
 
+/** How much a result weighs, to spot tools whose output is too big for a model. */
+function sizeOf(content: ToolContent[]): number {
+  return content.reduce((sum, block) => {
+    if (block.type === 'text') return sum + block.text.length;
+    return sum + (block.type === 'resource' ? block.resource.blob.length : block.data.length);
+  }, 0);
+}
+
 async function runTool(tool: ToolDefinition, context: ToolContext, args: unknown) {
   const { logger } = context;
   const started = Date.now();
   try {
     const content = await tool.execute(context, args);
     const ms = Date.now() - started;
+    const chars = sizeOf(content);
     if (ms >= SLOW_MS)
-      logger.warn(`tool ${tool.name} ok but slow ${ms}ms`, { tool: tool.name, ok: true, ms });
-    else logger.info(`tool ${tool.name} ok ${ms}ms`, { tool: tool.name, ok: true, ms });
+      logger.warn(`tool ${tool.name} ok but slow ${ms}ms`, { tool: tool.name, ok: true, chars, ms });
+    else logger.info(`tool ${tool.name} ok ${ms}ms`, { tool: tool.name, ok: true, chars, ms });
     return { content };
   } catch (error) {
     const kind = failureKind(error);

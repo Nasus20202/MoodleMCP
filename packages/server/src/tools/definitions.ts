@@ -4,6 +4,7 @@ import { MoodleFunction } from '../moodle/functions.ts';
 import { defineTool } from './define.ts';
 import { ToolName } from './names.ts';
 import { readFileTool } from './read-file.ts';
+import { pickSiteInfo } from './tidy.ts';
 
 const id = (describe: string) => z.number().int().positive().describe(describe);
 const courseId = id('Moodle course id: the `id` of a course from list_courses or search_courses');
@@ -26,6 +27,7 @@ export const TOOLS = [
     input: noInput,
     fn: MoodleFunction.SiteInfo,
     params: () => ({}),
+    shape: pickSiteInfo,
   }),
   defineTool({
     name: ToolName.ListCourses,
@@ -88,7 +90,8 @@ export const TOOLS = [
     name: ToolName.ListPages,
     description:
       "List a course's 'Page' activities including their full HTML content, which often holds the actual " +
-      'course material or instructions. Embedded files are linked by `fileurl` for read_file.',
+      'course material or instructions. Embedded files are linked by `fileurl` for read_file. Pictures pasted into ' +
+      "the page are not included here: read the page's index.html with read_file to see them.",
     input: courseInput,
     fn: MoodleFunction.Pages,
     params: courseIds,

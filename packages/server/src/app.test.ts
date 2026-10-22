@@ -194,6 +194,16 @@ describe('/mcp tools', () => {
     expect(logs.join('\n')).not.toContain('PRIVATE-QUERY');
   });
 
+  it('logs how large a tool result was, never its content', async () => {
+    const { app, logs } = setup(() => [{ id: 1, fullname: 'PRIVATE-NAME' }]);
+    await callTool(app, ToolName.SearchCourses, { query: 'x' });
+    const line = logs
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .find((l) => l.tool === ToolName.SearchCourses && l.ok === true);
+    expect(line?.chars).toBe(JSON.stringify([{ id: 1, fullname: 'PRIVATE-NAME' }]).length);
+    expect(logs.join('\n')).not.toContain('PRIVATE-NAME');
+  });
+
   it('rejects invalid arguments without calling Moodle', async () => {
     const { app, moodle } = setup();
     const { body } = await callTool(app, ToolName.GetCourseContents, { course_id: 'x' });
