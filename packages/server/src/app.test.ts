@@ -72,6 +72,37 @@ const callTool = (app: ReturnType<typeof createApp>, name: string, args: unknown
 const restCalls = (moodle: { calls: RecordedCall[] }) =>
   moodle.calls.filter((c) => c.url.pathname.endsWith('/webservice/rest/server.php'));
 
+describe('client identification in logs', () => {
+  it('logs the MCP client announced at initialize, with the User-Agent', async () => {
+    const { app, logs } = setup();
+    await rpc(
+      app,
+      'initialize',
+      {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'claude-code', version: '2.0.1' },
+      },
+      { 'User-Agent': 'claude-code/2.0.1' },
+    );
+    const lines = logs.map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(lines.find((l) => l.msg === 'mcp client initialized')).toMatchObject({
+      clientName: 'claude-code',
+      clientVersion: '2.0.1',
+      userAgent: 'claude-code/2.0.1',
+    });
+    expect(lines.find((l) => String(l.msg).startsWith('POST /mcp'))).toMatchObject({
+      userAgent: 'claude-code/2.0.1',
+    });
+  });
+
+  it('does not log a client for requests other than initialize', async () => {
+    const { app, logs } = setup();
+    await rpc(app, 'tools/list');
+    expect(logs.join('\n')).not.toContain('mcp client initialized');
+  });
+});
+
 describe('read_file', () => {
   const FILE = `${TEST_SITE}/webservice/pluginfile.php/1/mod_resource/content/1/notes.txt`;
   const serve =

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { CLIENT_IP_HEADER, clientInfoFrom, tokenFingerprint } from './client-info.ts';
+import { CLIENT_IP_HEADER, clientInfoFrom, mcpClientFrom, tokenFingerprint } from './client-info.ts';
 
 describe('tokenFingerprint', () => {
   it('is a stable 12-character hex string', async () => {
@@ -42,5 +42,42 @@ describe('clientInfoFrom', () => {
 
   it('omits what is not there', async () => {
     expect(await clientInfoFrom(new Headers())).toEqual({});
+  });
+});
+
+describe('clientInfoFrom user agent', () => {
+  it('records the User-Agent, stripped of control characters and truncated', async () => {
+    expect((await clientInfoFrom(new Headers({ 'User-Agent': 'claude-code/2.0\tx' }))).userAgent).toBe(
+      'claude-code/2.0 x',
+    );
+    const long = (await clientInfoFrom(new Headers({ 'User-Agent': 'a'.repeat(500) }))).userAgent;
+    expect(long).toHaveLength(200);
+  });
+});
+
+describe('mcpClientFrom', () => {
+  const initialize = {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'initialize',
+    params: { clientInfo: { name: 'claude-code', version: '2.0.1' } },
+  };
+
+  it('reads the client name and version from an initialize request', () => {
+    expect(mcpClientFrom(initialize)).toEqual({ clientName: 'claude-code', clientVersion: '2.0.1' });
+  });
+
+  it('finds initialize inside a batch', () => {
+    expect(mcpClientFrom([{ method: 'ping' }, initialize])).toEqual({
+      clientName: 'claude-code',
+      clientVersion: '2.0.1',
+    });
+  });
+
+  it('ignores other methods, malformed bodies and non-string labels', () => {
+    expect(mcpClientFrom({ method: 'tools/call', params: { clientInfo: { name: 'x' } } })).toBeUndefined();
+    expect(mcpClientFrom(null)).toBeUndefined();
+    expect(mcpClientFrom('initialize')).toBeUndefined();
+    expect(mcpClientFrom({ method: 'initialize', params: { clientInfo: { name: 1 } } })).toEqual({});
   });
 });
