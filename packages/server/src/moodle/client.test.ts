@@ -105,7 +105,7 @@ describe('MoodleClient.download', () => {
 
   it('fetches the file with the token and reports its type and name', async () => {
     const moodle = respond('hello');
-    const file = await clientFor(moodle.fetch, 'tok').download(FILE, 1024);
+    const file = await clientFor(moodle.fetch, 'tok').download(FILE, { maxBytes: 1024 });
 
     expect(new TextDecoder().decode(file.bytes)).toBe('hello');
     expect(file).toMatchObject({ mimeType: 'text/plain', filename: 'notes.txt', skipped: false });
@@ -115,13 +115,15 @@ describe('MoodleClient.download', () => {
 
   it('prefers the file name from Content-Disposition', async () => {
     const moodle = respond('x', { 'Content-Disposition': 'inline; filename="Sk%C5%82ad.txt"' });
-    expect((await clientFor(moodle.fetch).download(FILE, 1024)).filename).toBe('Skład.txt');
+    expect((await clientFor(moodle.fetch).download(FILE, { maxBytes: 1024 })).filename).toBe('Skład.txt');
   });
 
   it('never calls out for a URL on another host', async () => {
     const moodle = respond('x');
     await expect(
-      clientFor(moodle.fetch).download('https://evil.example.org/2025/webservice/pluginfile.php/1/a', 1024),
+      clientFor(moodle.fetch).download('https://evil.example.org/2025/webservice/pluginfile.php/1/a', {
+        maxBytes: 1024,
+      }),
     ).rejects.toThrow(/same Moodle site/);
     expect(moodle.calls).toHaveLength(0);
   });
@@ -134,13 +136,13 @@ describe('MoodleClient.download', () => {
         new Response(null, { status: 302, headers: { Location: 'https://evil.example.org/' } }),
       );
     };
-    await expect(clientFor(fetchImpl).download(FILE, 1024)).rejects.toThrow(/HTTP 302/);
+    await expect(clientFor(fetchImpl).download(FILE, { maxBytes: 1024 })).rejects.toThrow(/HTTP 302/);
     expect(init?.redirect).toBe('manual');
   });
 
   it('turns a JSON error body into a MoodleError', async () => {
     const moodle = fakeMoodle(() => ({ error: 'File not found', errorcode: 'filenotfound' }));
-    await expect(clientFor(moodle.fetch).download(FILE, 1024)).rejects.toMatchObject({
+    await expect(clientFor(moodle.fetch).download(FILE, { maxBytes: 1024 })).rejects.toMatchObject({
       name: 'MoodleError',
       message: 'filenotfound: File not found',
     });
@@ -148,49 +150,45 @@ describe('MoodleClient.download', () => {
 
   it('refuses files over the limit, declared or not', async () => {
     await expect(
-      clientFor(respond('x', { 'Content-Length': '5000' }).fetch).download(FILE, 1024),
+      clientFor(respond('x', { 'Content-Length': '5000' }).fetch).download(FILE, { maxBytes: 1024 }),
     ).rejects.toThrow(/too large/);
     const undeclared = fakeMoodle(() => new Response(new Uint8Array(4096)));
-    await expect(clientFor(undeclared.fetch).download(FILE, 1024)).rejects.toThrow(/too large/);
+    await expect(clientFor(undeclared.fetch).download(FILE, { maxBytes: 1024 })).rejects.toThrow(/too large/);
   });
 
   it('skips the body when the filter refuses the file', async () => {
     const moodle = respond('x'.repeat(100), { 'Content-Type': 'video/mp4' });
-    const file = await clientFor(moodle.fetch).download(
-      FILE,
-      1024,
-      ({ mimeType }) => mimeType !== 'video/mp4',
-    );
+    const file = await clientFor(moodle.fetch).download(FILE, {
+      maxBytes: 1024,
+      accept: ({ mimeType }) => mimeType !== 'video/mp4',
+    });
     expect(file).toMatchObject({ skipped: true, mimeType: 'video/mp4' });
     expect(file.bytes).toHaveLength(0);
   });
 
   it('reads the rest of a body only when a peek at its start says so', async () => {
     const text = respond('x'.repeat(20_000), { 'Content-Type': 'application/octet-stream' });
-    const kept = await clientFor(text.fetch).download(
-      FILE,
-      1024 * 1024,
-      () => 'peek',
-      (head) => head[0] === 120,
-    );
+    const kept = await clientFor(text.fetch).download(FILE, {
+      maxBytes: 1024 * 1024,
+      accept: () => 'peek',
+      peek: (head) => head[0] === 120,
+    });
     expect(kept).toMatchObject({ skipped: false });
     expect(kept.bytes).toHaveLength(20_000);
 
-    const refused = await clientFor(text.fetch).download(
-      FILE,
-      1024 * 1024,
-      () => 'peek',
-      () => false,
-    );
+    const refused = await clientFor(text.fetch).download(FILE, {
+      maxBytes: 1024 * 1024,
+      accept: () => 'peek',
+      peek: () => false,
+    });
     expect(refused).toMatchObject({ skipped: true });
     expect(refused.bytes).toHaveLength(0);
 
-    const short = await clientFor(respond('abc').fetch).download(
-      FILE,
-      1024,
-      () => 'peek',
-      (head) => head.length === 3,
-    );
+    const short = await clientFor(respond('abc').fetch).download(FILE, {
+      maxBytes: 1024,
+      accept: () => 'peek',
+      peek: (head) => head.length === 3,
+    });
     expect(short).toMatchObject({ skipped: false });
   });
 
@@ -203,14 +201,14 @@ describe('MoodleClient.download', () => {
       fetch: respond('x').fetch,
       logger,
     });
-    await ok.download(FILE, 1024);
+    await ok.download(FILE, { maxBytes: 1024 });
     const bad = new MoodleClient({
       baseUrl: TEST_SITE,
       token: 'SECRET-TOKEN',
       fetch: () => Promise.reject(new TypeError('offline')),
       logger,
     });
-    await bad.download(FILE, 1024).catch(() => undefined);
+    await bad.download(FILE, { maxBytes: 1024 }).catch(() => undefined);
 
     expect(lines.length).toBeGreaterThan(0);
     expect(lines.join('\n')).not.toMatch(/SECRET-TOKEN|notes\.txt|pluginfile/);
@@ -221,6 +219,71 @@ describe('MoodleClient.download', () => {
       if (this !== undefined) return Promise.reject(new TypeError('Illegal invocation'));
       return Promise.resolve(new Response('ok', { headers: { 'Content-Type': 'text/plain' } }));
     } as unknown as typeof fetch;
-    await expect(clientFor(strictFetch).download(FILE, 1024)).resolves.toMatchObject({ skipped: false });
+    await expect(clientFor(strictFetch).download(FILE, { maxBytes: 1024 })).resolves.toMatchObject({
+      skipped: false,
+    });
+  });
+});
+
+describe('MoodleClient logging', () => {
+  const FILE = `${TEST_SITE}/webservice/pluginfile.php/1/mod_resource/content/1/notes.txt`;
+
+  function logged(fetchImpl: typeof fetch) {
+    const lines: Record<string, unknown>[] = [];
+    const logger = createLogger('debug', (_l, line) =>
+      lines.push(JSON.parse(line) as Record<string, unknown>),
+    );
+    return {
+      lines,
+      client: new MoodleClient({ baseUrl: TEST_SITE, token: 'tok', fetch: fetchImpl, logger }),
+    };
+  }
+
+  it('logs a call with its function, outcome and time, tagged with the site', async () => {
+    const { lines, client } = logged(fakeMoodle(() => ({ ok: 1 })).fetch);
+    await client.call(MoodleFunction.SiteInfo);
+    expect(lines[0]).toMatchObject({
+      level: 'info',
+      site: TEST_SITE,
+      function: MoodleFunction.SiteInfo,
+      endpoint: '/webservice/rest/server.php',
+      ok: true,
+    });
+    expect(lines[0]?.msg).toMatch(new RegExp(`^moodle ${MoodleFunction.SiteInfo} ok \\d+ms$`));
+    expect(typeof lines[0]?.ms).toBe('number');
+  });
+
+  it('logs a failed call as a warning with the reason', async () => {
+    const offline: typeof fetch = () => Promise.reject(new TypeError('offline'));
+    const { lines, client } = logged(offline);
+    await client.call(MoodleFunction.SiteInfo).catch(() => undefined);
+    expect(lines[0]).toMatchObject({
+      level: 'warn',
+      function: MoodleFunction.SiteInfo,
+      ok: false,
+      error: expect.stringMatching(/Could not reach Moodle/) as unknown,
+      cause: 'offline',
+    });
+    expect(lines[0]?.msg).toMatch(new RegExp(`^moodle ${MoodleFunction.SiteInfo} failed \\d+ms$`));
+  });
+
+  it('logs a download with its type and size', async () => {
+    const moodle = fakeMoodle(() => new Response('hello', { headers: { 'Content-Type': 'text/plain' } }));
+    const { lines, client } = logged(moodle.fetch);
+    await client.download(FILE, { maxBytes: 1024 });
+    expect(lines[0]).toMatchObject({ level: 'info', ok: true, skipped: false, mime: 'text/plain', bytes: 5 });
+    expect(lines[0]?.msg).toMatch(/^moodle download text\/plain 5 bytes \d+ms$/);
+  });
+
+  it('logs a failed download as a warning with the reason', async () => {
+    const moodle = fakeMoodle(() => new Response('x', { headers: { 'Content-Length': '5000' } }));
+    const { lines, client } = logged(moodle.fetch);
+    await client.download(FILE, { maxBytes: 1024 }).catch(() => undefined);
+    expect(lines[0]).toMatchObject({
+      level: 'warn',
+      ok: false,
+      error: expect.stringMatching(/too large/) as unknown,
+    });
+    expect(lines[0]?.msg).toMatch(/^moodle download failed \d+ms$/);
   });
 });

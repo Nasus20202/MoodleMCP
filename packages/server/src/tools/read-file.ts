@@ -106,7 +106,7 @@ export const readFileTool = defineCustomTool({
 });
 
 async function readResource({ client, logger }: ToolContext, { file_url }: Input): Promise<ToolContent[]> {
-  const file = withSniffedType(await client.download(file_url, MAX_FILE_BYTES));
+  const file = withSniffedType(await client.download(file_url, { maxBytes: MAX_FILE_BYTES }));
   logger.info('file returned as resource', { mime: file.mimeType, bytes: file.bytes.byteLength });
   const data = toBase64(file.bytes);
   const mimeType = file.mimeType || 'application/octet-stream';
@@ -124,7 +124,11 @@ async function readResource({ client, logger }: ToolContext, { file_url }: Input
 
 async function readText(context: ToolContext, args: TextInput): Promise<ToolContent[]> {
   // A file of unknown type is looked into: its first bytes say whether it is worth reading.
-  const file = await context.client.download(args.file_url, MAX_FILE_BYTES, judge, readableByContent);
+  const file = await context.client.download(args.file_url, {
+    maxBytes: MAX_FILE_BYTES,
+    accept: judge,
+    peek: readableByContent,
+  });
   return readDocument(context, withSniffedType(file), args, {});
 }
 
