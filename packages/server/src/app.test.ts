@@ -204,6 +204,19 @@ describe('/mcp tools', () => {
     expect(logs.join('\n')).not.toContain('PRIVATE-NAME');
   });
 
+  it('attaches pictures pasted into a page after the text, marked where they sat', async () => {
+    const html = '<p>Look</p><img alt="" src="data:image/png;base64,iVBORw0KGgo=">';
+    const { app } = setup(() => ({ pages: [{ id: 1, content: html }] }));
+    const reply = await callTool(app, ToolName.ListPages, { course_id: 3 });
+    const content = (reply.body.result as { content: { type: string; text?: string; data?: string }[] })
+      .content;
+    expect(content.map((b) => b.type)).toEqual(['text', 'image', 'text']);
+    expect(content[0]?.text).toContain('<img alt=\\"\\" data-image=\\"1\\">');
+    expect(content[0]?.text).not.toContain('base64');
+    expect(content[1]?.data).toBe('iVBORw0KGgo=');
+    expect(content[2]?.text).toContain('1 image(s)');
+  });
+
   it('rejects invalid arguments without calling Moodle', async () => {
     const { app, moodle } = setup();
     const { body } = await callTool(app, ToolName.GetCourseContents, { course_id: 'x' });

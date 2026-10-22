@@ -91,7 +91,7 @@ export const TOOLS = [
     description:
       "List a course's 'Page' activities including their full HTML content, which often holds the actual " +
       'course material or instructions. Embedded files are linked by `fileurl` for read_file. Pictures pasted into ' +
-      "the page are not included here: read the page's index.html with read_file to see them.",
+      'a page are attached as images after the text, each marked `data-image="N"` where it sat.',
     input: courseInput,
     fn: MoodleFunction.Pages,
     params: courseIds,

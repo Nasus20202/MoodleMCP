@@ -1,5 +1,6 @@
 import type * as z from 'zod/v4';
 
+import { extractEmbeddedImages } from '../files/embedded-images.ts';
 import type { MarkdownConverter } from '../files/markdown.ts';
 import type { Logger } from '../logger.ts';
 import type { MoodleClient, Params } from '../moodle/client.ts';
@@ -13,6 +14,15 @@ export type ToolContent =
   | { type: 'image'; data: string; mimeType: string }
   | { type: 'audio'; data: string; mimeType: string }
   | { type: 'resource'; resource: { uri: string; mimeType?: string; blob: string } };
+
+/** Says where the pictures that came with a result are: numbered `data-image` marks in the text. */
+export function imageNote(attached: number, skipped: number): string {
+  return (
+    `${attached} image(s) pasted into the text are attached after it, in order; each \`data-image="N"\` ` +
+    'mark in the text is the Nth of them.' +
+    (skipped > 0 ? ` ${skipped} more were too large or beyond the limit and are left out.` : '')
+  );
+}
 
 export const jsonContent = (data: unknown): ToolContent[] => [{ type: 'text', text: JSON.stringify(data) }];
 
@@ -53,7 +63,18 @@ export function defineTool<Schema extends z.ZodObject>(spec: ToolSpec<Schema>): 
     async run({ client }, input) {
       const result = await client.call(spec.fn, await spec.params(input, client));
       const shaped = spec.shape ? spec.shape(result) : result;
-      return [{ type: 'text', text: await tidyToJson(shaped, () => client.lang()) }];
+      const { value, images, skipped } = extractEmbeddedImages(shaped);
+      const text = await tidyToJson(value, () => client.lang());
+      if (images.length === 0 && skipped === 0) return [{ type: 'text', text }];
+      return [
+        { type: 'text', text },
+        ...images.map((image): ToolContent => ({
+          type: 'image',
+          data: image.base64,
+          mimeType: image.mimeType,
+        })),
+        ...jsonContent({ note: imageNote(images.length, skipped) }),
+      ];
     },
   });
 }
