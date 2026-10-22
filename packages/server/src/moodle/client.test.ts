@@ -36,6 +36,27 @@ describe('MoodleClient.call', () => {
     });
   });
 
+  it('hides PHP internals of a failed lookup behind a plain message', async () => {
+    const moodle = fakeMoodle(() => ({
+      exception: 'Error',
+      message: 'Call to a member function get_forum_id() on null',
+    }));
+    const error = await clientFor(moodle.fetch)
+      .call(MoodleFunction.SiteInfo)
+      .catch((e: unknown) => e);
+    expect(error).toMatchObject({ name: 'MoodleError', code: 'unknown' });
+    expect((error as Error).message).not.toContain('get_forum_id');
+  });
+
+  it('hides any PHP exception class, which has no error code', async () => {
+    const moodle = fakeMoodle(() => ({ exception: 'RuntimeException', message: 'secret internal detail' }));
+    const error = await clientFor(moodle.fetch)
+      .call(MoodleFunction.SiteInfo)
+      .catch((e: unknown) => e);
+    expect(error).toMatchObject({ name: 'MoodleError', code: 'unknown' });
+    expect((error as Error).message).not.toContain('secret');
+  });
+
   it('turns HTTP failures, bad bodies and network errors into MoodleTransportError', async () => {
     const notFound = fakeMoodle(() => new Response('nope', { status: 404 }));
     await expect(clientFor(notFound.fetch).call(MoodleFunction.SiteInfo)).rejects.toThrow(/HTTP 404/);

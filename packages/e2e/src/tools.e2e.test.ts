@@ -54,7 +54,8 @@ const CASES: ToolCase[] = [
     args: {},
     fn: 'core_enrol_get_users_courses',
     looksUpUser: true,
-    expected: COURSES,
+    // The mock user's language is English, so the multi-language markup resolves to that part.
+    expected: COURSES.map((c) => (c.id === 101 ? { ...c, fullname: 'Algorithms' } : c)),
   },
   {
     tool: 'search_courses',

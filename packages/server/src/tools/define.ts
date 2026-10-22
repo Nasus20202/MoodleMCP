@@ -5,6 +5,7 @@ import type { Logger } from '../logger.ts';
 import type { MoodleClient, Params } from '../moodle/client.ts';
 import type { MoodleFunction } from '../moodle/functions.ts';
 import type { ToolName } from './names.ts';
+import { tidyToJson } from './tidy.ts';
 
 /** One block of a tool result, as MCP clients receive it. */
 export type ToolContent =
@@ -40,6 +41,8 @@ interface ToolSpec<Schema extends z.ZodObject> {
   fn: MoodleFunction;
   /** Maps validated input to Moodle parameters. May look up the token owner via `client.userId()`. */
   params(input: z.output<Schema>, client: MoodleClient): Params | Promise<Params>;
+  /** Reduces Moodle's result before it is tidied, e.g. to drop fields the model must not see. */
+  shape?(result: unknown): unknown;
 }
 
 export function defineTool<Schema extends z.ZodObject>(spec: ToolSpec<Schema>): ToolDefinition {
@@ -48,7 +51,9 @@ export function defineTool<Schema extends z.ZodObject>(spec: ToolSpec<Schema>): 
     description: spec.description,
     input: spec.input,
     async run({ client }, input) {
-      return jsonContent(await client.call(spec.fn, await spec.params(input, client)));
+      const result = await client.call(spec.fn, await spec.params(input, client));
+      const shaped = spec.shape ? spec.shape(result) : result;
+      return [{ type: 'text', text: await tidyToJson(shaped, () => client.lang()) }];
     },
   });
 }

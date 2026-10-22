@@ -1,5 +1,6 @@
 import * as z from 'zod/v4';
 
+import { embeddedImages } from '../files/embedded-images.ts';
 import { classifyConversionFailure, conversionFailureNote, toMarkdown } from '../files/markdown.ts';
 import { chooseMode, type ModeChoice, ReadMode } from '../files/mode.ts';
 import { MAX_PAGES_PER_CALL } from '../files/pdf.ts';
@@ -11,7 +12,7 @@ import {
   toBase64,
   unsupportedReason,
 } from '../files/read.ts';
-import { encodingNote, judge, readableByContent, withSniffedType } from '../files/sniff.ts';
+import { decodeText, encodingNote, judge, readableByContent, withSniffedType } from '../files/sniff.ts';
 import type { DownloadedFile } from '../moodle/client.ts';
 import { defineCustomTool, jsonContent, type ToolContent, type ToolContext } from './define.ts';
 import { ToolName } from './names.ts';
@@ -41,7 +42,7 @@ const input = z.object({
       'auto (default): Markdown for PDF, Word, Excel and HTML when available, otherwise extracted text; ' +
         'markdown: convert to Markdown (keeps headings and tables; for an image, a written description); ' +
         'extract: our own text extraction, PDFs page by page and images as images; ' +
-        'resource: the unmodified file, any type, ignoring offset and max_chars: an image block for images, ' +
+        'resource: the unmodified file (for a ZIP with `entry`, that entry), any type, ignoring offset and max_chars: an image block for images, ' +
         'an audio block for audio, an embedded resource for the rest (not every client accepts those)',
     ),
   offset: z
@@ -93,7 +94,8 @@ export const readFileTool = defineCustomTool({
     'used, and paging info; if `next_offset` is not null the file is longer, so call again with `offset` ' +
     'set to that value (and `page` to `next_page` when there is one). In extract mode PDFs are read a few ' +
     `pages at a time (at most ${MAX_PAGES_PER_CALL} per call), each page headed "--- Page N ---"; to jump to ` +
-    'a page, pass `page`. Images are returned as images unless `mode` is markdown. Scanned PDFs have no ' +
+    'a page, pass `page`. Images are returned as images unless `mode` is markdown. Pictures embedded in an ' +
+    "HTML file (a Page activity's index.html) are attached as images after the text. Scanned PDFs have no " +
     'text layer and come back empty. A ZIP archive comes back as a list of its `entries`; call again with ' +
     '`entry` set to one of their paths to read that file. Other types (audio, video) cannot be read as ' +
     'text: use mode resource to get the file, otherwise tell the user and give them the link. Files up to ' +
@@ -105,20 +107,34 @@ export const readFileTool = defineCustomTool({
   },
 });
 
-async function readResource({ client, logger }: ToolContext, { file_url }: Input): Promise<ToolContent[]> {
-  const file = withSniffedType(await client.download(file_url, { maxBytes: MAX_FILE_BYTES }));
+async function readResource(
+  { client, logger }: ToolContext,
+  { file_url, entry }: Input,
+): Promise<ToolContent[]> {
+  let file = withSniffedType(await client.download(file_url, { maxBytes: MAX_FILE_BYTES }));
+  let note = 'The unmodified file is attached.';
+  if (entry !== undefined) {
+    if (classify(file) === 'zip') {
+      const opening = openEntry(file, entry, logger);
+      if (!opening.ok) return jsonContent({ ...describeFile(file), readable: false, note: opening.note });
+      file = withSniffedType(opening.file);
+      note = `The unmodified file ${entry} from the archive is attached.`;
+    } else {
+      note = '`entry` is only used for ZIP archives and was ignored. ' + note;
+    }
+  }
   logger.info('file returned as resource', { mime: file.mimeType, bytes: file.bytes.byteLength });
   const data = toBase64(file.bytes);
   const mimeType = file.mimeType || 'application/octet-stream';
-  const note = jsonContent({ ...describeFile(file), note: 'The unmodified file is attached.' });
-  if (mimeType.startsWith('image/')) return [{ type: 'image', data, mimeType }, ...note];
-  if (mimeType.startsWith('audio/')) return [{ type: 'audio', data, mimeType }, ...note];
+  const info = jsonContent({ ...describeFile(file), note });
+  if (mimeType.startsWith('image/')) return [{ type: 'image', data, mimeType }, ...info];
+  if (mimeType.startsWith('audio/')) return [{ type: 'audio', data, mimeType }, ...info];
   return [
     {
       type: 'resource',
       resource: { uri: `moodle-file:///${encodeURIComponent(file.filename)}`, mimeType, blob: data },
     },
-    ...note,
+    ...info,
   ];
 }
 
@@ -146,7 +162,7 @@ async function readDocument(
   args: TextInput,
   origin: Origin,
 ): Promise<ToolContent[]> {
-  const { logger, markdown } = context;
+  const { logger } = context;
   const format = classify(file);
   if (file.skipped || format === null) {
     logUnreadable(logger, file.mimeType, 'unsupported type');
@@ -179,6 +195,32 @@ async function readDocument(
       note: joinNotes(origin.note, '`entry` is only used for ZIP archives and was ignored.'),
     };
   }
+  const content = await convertOrExtract(context, file, format, args, origin);
+  // Pictures pasted into a page live in its HTML as base64; the first page of a long page carries them all.
+  return format === 'html' && args.offset === 0 ? [...content, ...embeddedImageBlocks(file)] : content;
+}
+
+/** The images inside an HTML file as image blocks, with a line saying what they are. */
+function embeddedImageBlocks(file: DownloadedFile): ToolContent[] {
+  const { images, skipped } = embeddedImages(decodeText(file.bytes).text);
+  if (images.length === 0 && skipped === 0) return [];
+  const note =
+    `${images.length} image(s) embedded in the page are attached after this, in page order.` +
+    (skipped > 0 ? ` ${skipped} more were too large or beyond the limit and are left out.` : '');
+  return [
+    ...images.map((image): ToolContent => ({ type: 'image', data: image.base64, mimeType: image.mimeType })),
+    ...jsonContent({ note }),
+  ];
+}
+
+async function convertOrExtract(
+  context: ToolContext,
+  file: DownloadedFile,
+  format: DocumentKind,
+  args: TextInput,
+  origin: Origin,
+): Promise<ToolContent[]> {
+  const { logger, markdown } = context;
   let choice: ModeChoice = chooseMode(args.mode, format, {
     canConvert: markdown !== undefined,
     page: args.page,

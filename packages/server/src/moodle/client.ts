@@ -9,6 +9,12 @@ export const USER_AGENT = 'MoodleMobile/4.5.0 (moodle-mcp)';
 
 const MAX_RESPONSE_CHARS = 16 * 1024 * 1024;
 
+/** The part of `core_webservice_get_site_info` the client itself needs. */
+interface SiteInfo {
+  userid: number;
+  lang?: string;
+}
+
 export type Params = Record<string, string | number>;
 
 export interface MoodleClientOptions {
@@ -24,12 +30,13 @@ const WS_ENDPOINT = '/webservice/rest/server.php';
 
 interface ExceptionBody {
   exception: string;
-  errorcode: string;
+  /** Absent for PHP errors, which Moodle reports as just `{exception, message}`. */
+  errorcode?: string;
   message: string;
 }
 
 const isExceptionBody = (v: unknown): v is ExceptionBody =>
-  typeof v === 'object' && v !== null && 'exception' in v && 'errorcode' in v && 'message' in v;
+  typeof v === 'object' && v !== null && 'exception' in v && 'message' in v;
 
 /** Log fields that say why a call failed. Messages only: they never carry the token or parameter values. */
 function failureFields(error: unknown) {
@@ -45,7 +52,7 @@ export class MoodleClient {
   readonly #token: string;
   readonly #fetch: typeof fetch;
   readonly #log: Logger;
-  #userId: number | undefined;
+  #siteInfo: Promise<SiteInfo> | undefined;
 
   constructor(options: MoodleClientOptions) {
     this.#baseUrl = options.baseUrl.replace(/\/+$/, '');
@@ -72,11 +79,20 @@ export class MoodleClient {
 
   /** The token owner's user id, looked up once per client. */
   async userId(): Promise<number> {
-    if (this.#userId === undefined) {
-      const info = await this.call<{ userid: number }>(MoodleFunction.SiteInfo);
-      this.#userId = info.userid;
-    }
-    return this.#userId;
+    return (await this.#info()).userid;
+  }
+
+  /** The token owner's interface language (e.g. `pl`), to pick a part of multi-language text. */
+  async lang(): Promise<string> {
+    return (await this.#info()).lang ?? 'en';
+  }
+
+  #info(): Promise<SiteInfo> {
+    this.#siteInfo ??= this.call<SiteInfo>(MoodleFunction.SiteInfo).catch((error: unknown) => {
+      this.#siteInfo = undefined; // a failed lookup must not be remembered
+      throw error;
+    });
+    return this.#siteInfo;
   }
 
   /**
@@ -264,6 +280,25 @@ function filenameOf(response: Response, url: URL): string {
   }
 }
 
+/** PHP errors (not Moodle's own exceptions) carry internals such as "Call to a member function … on null". */
+const PHP_ERROR = /^(Error|TypeError|ValueError|ArgumentCountError|DivisionByZeroError|dml_\w+)$/;
+
+function toMoodleError({ exception, errorcode, message }: ExceptionBody): MoodleError {
+  // Moodle's own exceptions always have an error code; a PHP error of any class has none.
+  const code = errorcode === undefined || errorcode === '' ? 'unknown' : errorcode;
+  if (
+    code === 'unknown' ||
+    PHP_ERROR.test(exception) ||
+    code === 'generalexceptionmessage' ||
+    code === 'codingerror'
+  )
+    return new MoodleError(
+      code,
+      'Moodle could not process this request. Most likely an id does not exist or the user cannot access it.',
+    );
+  return new MoodleError(code, message);
+}
+
 /** Decodes a Moodle response, turning HTTP failures and in-body exceptions into errors. */
 export async function parseMoodleResponse<T>(response: Response): Promise<T> {
   const text = await ensureOk(response).text();
@@ -275,6 +310,6 @@ export async function parseMoodleResponse<T>(response: Response): Promise<T> {
   } catch (cause) {
     throw new MoodleTransportError('Moodle returned a non-JSON response', { cause });
   }
-  if (isExceptionBody(data)) throw new MoodleError(data.errorcode, data.message);
+  if (isExceptionBody(data)) throw toMoodleError(data);
   return data as T;
 }

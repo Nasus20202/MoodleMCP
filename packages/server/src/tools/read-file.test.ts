@@ -50,6 +50,15 @@ describe('read_file', () => {
     ]);
   });
 
+  it('attaches base64 images embedded in an HTML page after its text', async () => {
+    const html = '<p>See</p><img alt="fig" src="data:image/png;base64,iVBORw==">';
+    const { body } = await readFile(serve(html, 'text/html'));
+    const content = body.result?.content ?? [];
+    expect(JSON.parse(content[0]?.text ?? '')).toMatchObject({ readable: true, text: 'See' });
+    expect(content[1]).toEqual({ type: 'image', data: 'iVBORw==', mimeType: 'image/png' });
+    expect(content[2]?.text).toContain('1 image(s) embedded');
+  });
+
   it('explains files it cannot read instead of failing', async () => {
     const { json } = await readFile(serve('x', 'video/mp4'));
     expect(json().readable).toBe(false);
@@ -78,6 +87,28 @@ describe('read_file', () => {
         'clip.mp4': new Uint8Array([0, 0, 0, 24]),
         'inner.zip': inner,
       });
+
+    it('returns just the requested entry in resource mode', async () => {
+      const { body } = await readFile(serve(archive(), 'application/zip'), {
+        mode: 'resource',
+        entry: 'notes.txt',
+      });
+      const [resource, info] = body.result?.content ?? [];
+      expect(resource).toMatchObject({
+        type: 'resource',
+        resource: { uri: 'moodle-file:///notes.txt', blob: btoa('zip notes') },
+      });
+      expect(info?.text).toContain('notes.txt');
+    });
+
+    it('reports a missing entry in resource mode instead of returning the archive', async () => {
+      const { body } = await readFile(serve(archive(), 'application/zip'), {
+        mode: 'resource',
+        entry: 'nope.txt',
+      });
+      expect(body.result?.content).toHaveLength(1);
+      expect(body.result?.content?.[0]?.type).toBe('text');
+    });
 
     it('lists the files of an archive and says which can be read', async () => {
       const { json, moodle } = await readFile(serve(archive(), 'application/zip'));
