@@ -157,13 +157,14 @@ export function oauthRoutes(deps: {
   return (
     new Hono<AppEnv>()
       .use('/.well-known/*', cors())
-      .use('/oauth/register', cors())
-      .use('/oauth/token', cors())
+      .use(OAUTH_PATHS.register, cors())
+      .use(OAUTH_PATHS.token, cors())
       .post('/oauth/*', limitBody(MAX_BODY_BYTES))
-      .get('/.well-known/oauth-protected-resource/*', (c) => c.json(protectedResource(origin(c.req.url))))
-      .get(OAUTH_PATHS.resourceMetadata, (c) => c.json(protectedResource(origin(c.req.url))))
-      .get('/.well-known/oauth-authorization-server/*', (c) => c.json(serverMetadata(origin(c.req.url))))
-      .get(OAUTH_PATHS.serverMetadata, (c) => c.json(serverMetadata(origin(c.req.url))))
+      // Clients may append the resource's path (RFC 9728 and RFC 8414), so `…/mcp` is served too.
+      .on('GET', withSuffix(OAUTH_PATHS.resourceMetadata), (c) =>
+        c.json(protectedResource(origin(c.req.url))),
+      )
+      .on('GET', withSuffix(OAUTH_PATHS.serverMetadata), (c) => c.json(serverMetadata(origin(c.req.url))))
       .post(OAUTH_PATHS.register, async (c) => {
         const parsed = registrationRequest.safeParse(await c.req.json().catch(() => undefined));
         if (!parsed.success) {
@@ -226,36 +227,24 @@ export function oauthRoutes(deps: {
           return grantFailure(c, error);
         }
 
-        const retry = (reason: string, message: string, site?: string) => {
-          logger.warn(`oauth consent rejected: ${reason}`, { ...c.get('client'), redirectHost, site });
-          return c.json(jsonError(message), 400);
-        };
-
         let token: string;
+        // Set once the site passes the policy, so a rejection by Moodle is logged with the site it came from.
+        let site: string | undefined;
         try {
           token = tokenFromInput(rawToken);
-        } catch (error) {
-          if (error instanceof LinkError) return retry('bad_token', error.message);
-          throw error;
-        }
-
-        let site: string;
-        try {
           site = policy.validate(requestedSite);
-        } catch (error) {
-          if (error instanceof SiteNotAllowedError) return retry('site_not_allowed', error.message);
-          throw error;
-        }
-        try {
           await new MoodleClient({ baseUrl: site, token, fetch: deps.fetch, logger }).call(
             MoodleFunction.SiteInfo,
           );
         } catch (error) {
-          if (error instanceof MoodleError)
-            return retry('moodle_rejected', 'Moodle rejected this token. Check it and the site.', site);
-          if (error instanceof MoodleTransportError)
-            return retry('moodle_unreachable', 'Could not reach that Moodle site.', site);
-          throw error;
+          const rejection = consentRejection(error);
+          if (!rejection) throw error;
+          logger.warn(`oauth consent rejected: ${rejection.reason}`, {
+            ...c.get('client'),
+            redirectHost,
+            site,
+          });
+          return c.json(jsonError(rejection.message), 400);
         }
 
         const code = await sealer.seal(
@@ -266,7 +255,7 @@ export function oauthRoutes(deps: {
             clientId: request.client_id,
             redirectUri: request.redirect_uri,
             challenge: request.code_challenge,
-          },
+          } satisfies z.input<typeof codeSeal>,
           Lifetime.Code,
         );
         logger.info('oauth code issued', { ...c.get('client'), redirectHost, site });
@@ -292,6 +281,19 @@ export function oauthRoutes(deps: {
         }
       })
   );
+}
+
+const withSuffix = (path: string) => [path, `${path}/*`];
+
+/** The reason logged and the message shown when a consent submission is sent back to the user. */
+function consentRejection(error: unknown): { reason: string; message: string } | undefined {
+  if (error instanceof LinkError) return { reason: 'bad_token', message: error.message };
+  if (error instanceof SiteNotAllowedError) return { reason: 'site_not_allowed', message: error.message };
+  if (error instanceof MoodleError)
+    return { reason: 'moodle_rejected', message: 'Moodle rejected this token. Check it and the site.' };
+  if (error instanceof MoodleTransportError)
+    return { reason: 'moodle_unreachable', message: 'Could not reach that Moodle site.' };
+  return undefined;
 }
 
 const protectedResource = (base: string) => ({

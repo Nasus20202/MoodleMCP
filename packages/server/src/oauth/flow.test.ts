@@ -90,6 +90,18 @@ describe('OAuth discovery', () => {
     });
   });
 
+  it.each([
+    ['/.well-known/oauth-protected-resource', 'resource'],
+    ['/.well-known/oauth-protected-resource/mcp', 'resource'],
+    ['/.well-known/oauth-authorization-server', 'issuer'],
+    ['/.well-known/oauth-authorization-server/mcp', 'issuer'],
+  ])('serves %s, with or without the resource path after it', async (path, field) => {
+    const res = await setup().request(path);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    expect(await res.json()).toHaveProperty(field);
+  });
+
   it('points unauthenticated MCP calls at the metadata', async () => {
     const res = await setup().request('/mcp', { method: 'POST', body: '{}' });
     expect(res.status).toBe(401);
@@ -212,6 +224,60 @@ describe('authorization', () => {
     );
     expect(res.status).toBe(400);
     expect(h.moodle.calls).toHaveLength(0);
+  });
+});
+
+describe('consent rejections', () => {
+  const unreachable = () => new Response('down', { status: 503 });
+  const rejected = () => ({ exception: 'x', errorcode: 'invalidtoken', message: 'Invalid token' });
+
+  it.each([
+    {
+      reason: 'bad_token',
+      token: 'moodlemobile://moodle.example.edu?qrlogin=k&userid=1',
+      site: TEST_SITE,
+      respond: () => ({ userid: 1 }),
+      error: 'That is a Moodle app link without a token. Paste the token itself.',
+      loggedSite: undefined,
+    },
+    {
+      reason: 'site_not_allowed',
+      token: MOODLE_TOKEN,
+      site: 'https://evil.example.org',
+      respond: () => ({ userid: 1 }),
+      error: 'This Moodle site is not allowed on this server',
+      loggedSite: undefined,
+    },
+    {
+      reason: 'moodle_rejected',
+      token: MOODLE_TOKEN,
+      site: TEST_SITE,
+      respond: rejected,
+      error: 'Moodle rejected this token. Check it and the site.',
+      loggedSite: TEST_SITE,
+    },
+    {
+      reason: 'moodle_unreachable',
+      token: MOODLE_TOKEN,
+      site: TEST_SITE,
+      respond: unreachable,
+      error: 'Could not reach that Moodle site.',
+      loggedSite: TEST_SITE,
+    },
+  ])('asks again on $reason, logging why without the token', async (c) => {
+    const h = setup(c.respond);
+    const params = await authorizeParams(await register(h));
+    const res = await h.request('/oauth/authorize', form({ ...params, site: c.site, token: c.token }));
+    expect(res.status).toBe(400);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    expect(await res.json()).toEqual({ error: c.error });
+
+    const lines = h.logs.map((l) => JSON.parse(l) as Record<string, unknown>);
+    const line = lines.find((l) => l.msg === `oauth consent rejected: ${c.reason}`);
+    expect(line).toMatchObject({ level: 'warn', redirectHost: 'chatgpt.example' });
+    expect(line?.site).toBe(c.loggedSite);
+    expect(lines.some((l) => l.msg === 'oauth code issued')).toBe(false);
+    expect(h.logs.join('\n')).not.toContain(MOODLE_TOKEN);
   });
 });
 
