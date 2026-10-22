@@ -27,16 +27,18 @@ export const jsonError = (message: string): ErrorResponse => ({ error: message }
 /** Turns thrown errors into JSON error responses; unexpected ones are logged and reported opaquely. */
 export function errorHandler(logger: Logger): ErrorHandler<AppEnv> {
   return (error, c) => {
-    // These messages are fixed strings, so they are safe to log; they say why a caller was turned away.
-    if (error instanceof HttpError && error.status === 401)
-      logger.warn(`auth rejected: ${error.message}`, { ...c.get('client'), path: c.req.path });
-    if (error instanceof HttpError && error.status === 413)
-      logger.warn('request rejected: too large', { ...c.get('client'), path: c.req.path });
-    if (error instanceof SiteNotAllowedError)
-      logger.warn(`site rejected: ${error.message}`, { ...c.get('client'), path: c.req.path });
-    if (error instanceof HttpError) return c.json(jsonError(error.message), error.status, error.headers);
-    if (error instanceof LinkError || error instanceof SiteNotAllowedError)
+    // Messages of the turned-away cases are fixed strings, so they are safe to log: they say why a caller was refused.
+    const refused = (message: string) => logger.warn(message, { ...c.get('client'), path: c.req.path });
+    if (error instanceof HttpError) {
+      if (error.status === 401) refused(`auth rejected: ${error.message}`);
+      if (error.status === 413) refused('request rejected: too large');
+      return c.json(jsonError(error.message), error.status, error.headers);
+    }
+    if (error instanceof SiteNotAllowedError) {
+      refused(`site rejected: ${error.message}`);
       return c.json(jsonError(error.message), 400);
+    }
+    if (error instanceof LinkError) return c.json(jsonError(error.message), 400);
     if (error instanceof z.ZodError) return c.json(jsonError('Invalid request'), 400);
     if (error instanceof MoodleError || error instanceof MoodleTransportError)
       return c.json(jsonError(error.message), 502);

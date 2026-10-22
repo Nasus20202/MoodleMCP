@@ -2,6 +2,7 @@ import { type Logger, silentLogger } from '../logger.ts';
 import { MoodleError, MoodleTransportError } from './errors.ts';
 import { resolveFileUrl } from './file-url.ts';
 import { isAllowedFunction, MoodleFunction } from './functions.ts';
+import { ensureOk, send } from './http.ts';
 
 /** Moodle must see a "MoodleMobile" user agent for the QR login exchange; we use it everywhere. */
 export const USER_AGENT = 'MoodleMobile/4.5.0 (moodle-mcp)';
@@ -29,6 +30,14 @@ interface ExceptionBody {
 
 const isExceptionBody = (v: unknown): v is ExceptionBody =>
   typeof v === 'object' && v !== null && 'exception' in v && 'errorcode' in v && 'message' in v;
+
+/** Log fields that say why a call failed. Messages only: they never carry the token or parameter values. */
+function failureFields(error: unknown) {
+  return {
+    error: error instanceof Error ? error.message : String(error),
+    cause: error instanceof Error && error.cause instanceof Error ? error.cause.message : undefined,
+  };
+}
 
 /** Read-only client for one token owner. Cheap to create; create one per request. */
 export class MoodleClient {
@@ -71,8 +80,7 @@ export class MoodleClient {
         endpoint: WS_ENDPOINT,
         ok: false,
         ms,
-        error: error instanceof Error ? error.message : String(error),
-        cause: error instanceof Error && error.cause instanceof Error ? error.cause.message : undefined,
+        ...failureFields(error),
       });
       throw error;
     }
@@ -114,12 +122,7 @@ export class MoodleClient {
     } catch (error) {
       // The URL carries the token, so it is never logged.
       const ms = Date.now() - started;
-      this.#log.warn(`moodle download failed ${ms}ms`, {
-        ok: false,
-        ms,
-        error: error instanceof Error ? error.message : String(error),
-        cause: error instanceof Error && error.cause instanceof Error ? error.cause.message : undefined,
-      });
+      this.#log.warn(`moodle download failed ${ms}ms`, { ok: false, ms, ...failureFields(error) });
       throw error;
     }
   }
@@ -130,13 +133,10 @@ export class MoodleClient {
     accept?: FileFilter,
     keepAfterPeek?: PeekFilter,
   ): Promise<DownloadedFile> {
-    const doFetch = this.#fetch;
-    let response: Response;
-    try {
-      response = await doFetch(url, { redirect: 'manual', headers: { 'User-Agent': USER_AGENT } });
-    } catch (cause) {
-      throw new MoodleTransportError('Could not reach Moodle', { cause });
-    }
+    const response = await send(this.#fetch, url, {
+      redirect: 'manual',
+      headers: { 'User-Agent': USER_AGENT },
+    });
     if (!response.ok) throw new MoodleTransportError(`Moodle returned HTTP ${response.status} for the file`);
 
     const mimeType = (response.headers.get('Content-Type') ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
@@ -165,18 +165,11 @@ export class MoodleClient {
   }
 
   async #post<T>(url: string, body: URLSearchParams): Promise<T> {
-    // Called as a plain function: Workers rejects the global fetch invoked with any other `this`.
-    const doFetch = this.#fetch;
-    let response: Response;
-    try {
-      response = await doFetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': USER_AGENT },
-        body,
-      });
-    } catch (cause) {
-      throw new MoodleTransportError('Could not reach Moodle', { cause });
-    }
+    const response = await send(this.#fetch, url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': USER_AGENT },
+      body,
+    });
     return parseMoodleResponse<T>(response);
   }
 }
@@ -217,6 +210,7 @@ async function readLimited(
   if (!reader) return new Uint8Array();
   const chunks: Uint8Array[] = [];
   let total = 0;
+  let pending = peek;
   for (;;) {
     const result = (await reader.read()) as ReadableStreamReadResult<Uint8Array>;
     if (result.done) break;
@@ -227,15 +221,15 @@ async function readLimited(
       throw tooLarge(total, maxBytes);
     }
     chunks.push(value);
-    if (peek && total >= PEEK_BYTES) {
-      if (!peek(concat(chunks, total))) {
+    if (pending && total >= PEEK_BYTES) {
+      if (!pending(concat(chunks, total))) {
         await reader.cancel();
         return null;
       }
-      peek = undefined;
+      pending = undefined;
     }
   }
-  if (peek && !peek(concat(chunks, total))) return null;
+  if (pending && !pending(concat(chunks, total))) return null;
   return concat(chunks, total);
 }
 
@@ -270,8 +264,7 @@ function filenameOf(response: Response, url: URL): string {
 
 /** Decodes a Moodle response, turning HTTP failures and in-body exceptions into errors. */
 export async function parseMoodleResponse<T>(response: Response): Promise<T> {
-  if (!response.ok) throw new MoodleTransportError(`Moodle returned HTTP ${response.status}`);
-  const text = await response.text();
+  const text = await ensureOk(response).text();
   if (text.length > MAX_RESPONSE_CHARS) throw new MoodleTransportError('Moodle response is too large');
 
   let data: unknown;
