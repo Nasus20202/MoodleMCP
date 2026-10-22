@@ -59,7 +59,7 @@ export type FileReading =
   | { kind: 'text'; format: string; text: string; pages?: number | undefined; encoding?: TextEncoding }
   | { kind: 'pdf'; chunk: PdfChunk }
   | { kind: 'image'; mimeType: string; base64: string }
-  | { kind: 'unsupported'; reason: string };
+  | { kind: 'too-large'; reason: string };
 
 const extensionOf = (filename: string) => /\.([a-z0-9]+)$/i.exec(filename)?.[1]?.toLowerCase() ?? '';
 
@@ -73,6 +73,9 @@ export function effectiveType({ mimeType, filename }: Pick<DownloadedFile, 'mime
 }
 
 export type Kind = 'pdf' | 'docx' | 'pptx' | 'xlsx' | 'odf' | 'html' | 'image' | 'text' | 'zip';
+
+/** The kinds `readFile` extracts. Archives are opened by read_file itself, one entry at a time. */
+export type DocumentKind = Exclude<Kind, 'zip'>;
 
 /** What we can do with a file, judged from its metadata alone (so unreadable files are never downloaded). */
 export function classify(meta: Pick<DownloadedFile, 'mimeType' | 'filename'>): Kind | null {
@@ -95,7 +98,7 @@ export const unsupportedReason = (meta: Pick<DownloadedFile, 'mimeType' | 'filen
   `Cannot extract text from ${effectiveType(meta) || 'this file type'}. Supported: PDF, DOCX, PPTX, XLSX, OpenDocument (ODT, ODS, ODP), HTML, images, text files and ZIP archives. For any other file, mode resource returns it unchanged.`;
 
 /**
- * Extracts what a model can read from a downloaded file. The parsers (PDF.js, fflate) are large and most
+ * Extracts what a model can read from a downloaded file of the given kind, as `classify` judged it. The parsers (PDF.js, fflate) are large and most
  * requests never read a document, so each is loaded on first use rather than when the Worker starts.
  *
  * PDFs are read only as far as `pdfWindow` reaches, because extracting a page is what costs CPU; every other
@@ -103,9 +106,10 @@ export const unsupportedReason = (meta: Pick<DownloadedFile, 'mimeType' | 'filen
  */
 export async function readFile(
   file: DownloadedFile,
+  kind: DocumentKind,
   pdfWindow: PdfWindow = { page: 1, offset: 0, maxChars: Infinity },
 ): Promise<FileReading> {
-  switch (classify(file)) {
+  switch (kind) {
     case 'pdf': {
       const { readPdf } = await import('./pdf.ts');
       return { kind: 'pdf', chunk: await readPdf(file.bytes, pdfWindow) };
@@ -134,20 +138,13 @@ export async function readFile(
     }
     case 'image':
       if (file.bytes.byteLength > MAX_IMAGE_BYTES) {
-        return { kind: 'unsupported', reason: 'The image is larger than 4 MB, which is too big to return.' };
+        return { kind: 'too-large', reason: 'The image is larger than 4 MB, which is too big to return.' };
       }
       return { kind: 'image', mimeType: effectiveType(file), base64: toBase64(file.bytes) };
     case 'text': {
       const { text, encoding } = decodeText(file.bytes);
       return { kind: 'text', format: extensionOf(file.filename) || 'text', text, encoding };
     }
-    case 'zip':
-      return {
-        kind: 'unsupported',
-        reason: 'ZIP archives are handled by read_file itself and never reach the extractors.',
-      };
-    case null:
-      return { kind: 'unsupported', reason: unsupportedReason(file) };
   }
 }
 

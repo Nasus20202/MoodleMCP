@@ -9,12 +9,14 @@ import type { Sealer } from '../oauth/sealer.ts';
 import type { SitePolicy } from '../site-policy.ts';
 import { OAUTH_PATHS } from './oauth.ts';
 
-export function mcpRoutes(
-  endpoint: McpEndpoint,
-  policy: SitePolicy,
-  logger: Logger,
-  sealer: Sealer | undefined,
-): Hono<AppEnv> {
+/** The MCP endpoint, behind authentication. `sealer` is present when OAuth is enabled. */
+export function mcpRoutes(deps: {
+  endpoint: McpEndpoint;
+  policy: SitePolicy;
+  logger: Logger;
+  sealer: Sealer | undefined;
+}): Hono<AppEnv> {
+  const { endpoint, policy, logger, sealer } = deps;
   return new Hono<AppEnv>().all('/mcp', async (c) => {
     const caller = await authenticate(c.req.raw.headers, {
       policy,

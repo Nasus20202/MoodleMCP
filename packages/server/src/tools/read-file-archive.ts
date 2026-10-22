@@ -3,7 +3,7 @@ import { listZip, MAX_ENTRY_BYTES, unzipEntry, ZipEntryTooLargeError } from '../
 import type { Logger } from '../logger.ts';
 import type { DownloadedFile } from '../moodle/client.ts';
 import { jsonContent, type ToolContent } from './define.ts';
-import { DEFAULT_CHARS, describeFile, errorName, logUnreadable } from './read-file-results.ts';
+import { DEFAULT_CHARS, describeFile, logParseFailed, logUnreadable } from './read-file-results.ts';
 
 /** The paging arguments. They do not apply to a listing, only to reading an entry. */
 interface Paging {
@@ -22,12 +22,7 @@ export function listArchive(
   try {
     listing = listZip(file.bytes);
   } catch (error) {
-    logger.warn('file parse failed', {
-      format: 'zip',
-      mime: file.mimeType,
-      bytes: file.bytes.byteLength,
-      error: errorName(error),
-    });
+    logParseFailed(logger, file, 'zip', error);
     return jsonContent({
       ...describeFile(file),
       readable: false,
@@ -82,12 +77,7 @@ export function openEntry(archive: DownloadedFile, path: string, logger: Logger)
         note: `That entry is larger than ${MAX_ENTRY_BYTES / 1024 / 1024} MB, which is too big to read.`,
       };
     }
-    logger.warn('file parse failed', {
-      format: 'zip',
-      mime: archive.mimeType,
-      bytes: archive.bytes.byteLength,
-      error: errorName(error),
-    });
+    logParseFailed(logger, archive, 'zip', error);
     return {
       ok: false,
       note: 'That entry could not be read: the archive may be corrupt or password-protected.',
