@@ -79,7 +79,8 @@ argument comes from (`describe()` on the argument repeats it). A tool that is no
 - Style is enforced by ESLint (type-aware) and Prettier; run `pnpm format` instead of fixing it by hand. `no-console` is an
   error; the logger is the one place that may use the console.
 - Keep Svelte components thin: logic goes in `packages/web/src/lib` (or `shared`) where it is unit tested.
-- Tests sit next to the code (`*.test.ts`). Use `fakeMoodle` from `server/src/test-utils.ts` instead of the network.
+- Tests sit next to the code (`*.test.ts`). Use `fakeMoodle` from `server/src/test-utils.ts` instead of the network,
+  and `server/src/app-test-utils.ts` to drive the whole app (`rpc`, `callTool`).
   Behaviour that crosses the HTTP boundary (auth headers, OAuth, the real Worker runtime) is tested in `packages/e2e`
   against the mock Moodle; keep the mock faithful to Moodle (real error codes, enrolment checks, HTTP 200 with an
   exception body) rather than making it echo whatever the Worker sends.
