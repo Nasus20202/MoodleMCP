@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { launchUrl, normalizeSite, profileUrl } from '@moodle-mcp/shared';
+  import { launchUrl, profileUrl } from '@moodle-mcp/shared';
 
   import { resolveToken } from '../lib/resolve';
   import { session } from '../lib/session.svelte';
@@ -28,10 +28,6 @@
     }
   }
 
-  function showError(message: string) {
-    error = message;
-  }
-
   async function onLinkInput() {
     if (!link.trim()) {
       error = notice = '';
@@ -44,7 +40,7 @@
     }
   }
 
-  const openSignIn = () => window.open(launchUrl(normalizeSite(session.site)), '_blank', 'noopener');
+  const openSignIn = () => window.open(launchUrl(session.site), '_blank', 'noopener');
 </script>
 
 <div class="space-y-4">
@@ -104,7 +100,7 @@
           class="kbd">V</kbd
         >) or pick it here.
       </p>
-      <QRDropzone active={tab === 'qr'} onText={applyText} onError={showError} />
+      <QRDropzone active={tab === 'qr'} onText={applyText} onError={(message: string) => (error = message)} />
       <p class="mt-2 text-xs text-slate-500">
         The image is decoded in your browser and never uploaded. If the code carries a one-time login key,
         only that key is sent to this server to obtain your token.

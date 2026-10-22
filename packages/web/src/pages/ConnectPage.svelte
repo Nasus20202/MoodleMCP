@@ -1,10 +1,10 @@
 <script lang="ts">
-  import type { AuthorizeContextResponse } from '@moodle-mcp/shared';
+  import { type AuthorizeContextResponse, launchUrl } from '@moodle-mcp/shared';
   import { onMount } from 'svelte';
 
   import PageLayout from '../components/PageLayout.svelte';
   import { fetchAuthorizeContext, submitConsent } from '../lib/api';
-  import { requestFields, signInLink } from '../lib/consent';
+  import { requestFields } from '../lib/consent';
   import { onLinkClick } from '../lib/router.svelte';
 
   const query = window.location.search;
@@ -16,7 +16,7 @@
   let error = $state('');
   let busy = $state(false);
 
-  const link = $derived(signInLink(site));
+  const link = $derived(launchUrl(site));
 
   onMount(() => {
     const robots = document.createElement('meta');
@@ -66,12 +66,8 @@
       <h3 class="eyebrow mt-5">How do I get my token?</h3>
       <ol class="muted mt-2 list-decimal space-y-2 pl-5">
         <li>
-          {#if link}
-            <a class="link" href={link} target="_blank" rel="noopener">Open the Moodle sign-in page</a> and sign
-            in with your university account.
-          {:else}
-            Open your Moodle site's mobile sign-in page and sign in.
-          {/if}
+          <a class="link" href={link} target="_blank" rel="noopener">Open the Moodle sign-in page</a> and sign in
+          with your university account.
         </li>
         <li>
           Moodle shows a <strong>“Click here to launch the app”</strong> link. Nothing will open; that is expected.
