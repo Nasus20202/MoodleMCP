@@ -187,6 +187,14 @@ describe('secrets stay out of logs and responses', () => {
     });
   });
 
+  it('logs the Smart Placement location of each request when Cloudflare sets one', async () => {
+    await world.worker.fetch('/api/nope', { headers: { 'cf-placement': 'remote-LHR' } });
+    await world.worker.fetch('/api/nope');
+    const lines = (await world.worker.logs()).filter((l) => String(l.msg).startsWith('GET /api/nope'));
+    expect(lines[0]).toMatchObject({ placement: 'remote-LHR' });
+    expect(lines[1]).not.toHaveProperty('placement');
+  });
+
   it('logs why a caller was turned away, with the IP and without credentials', async () => {
     await world.worker.fetch('/mcp', { method: 'POST', body: '{}' });
     const line = (await world.worker.logs()).find((l) => String(l.msg).startsWith('auth rejected'));
