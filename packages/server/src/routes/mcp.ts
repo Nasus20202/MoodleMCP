@@ -12,18 +12,18 @@ import { OAUTH_PATHS } from './oauth.ts';
 export function mcpRoutes(
   endpoint: McpEndpoint,
   policy: SitePolicy,
-  sealer?: Sealer,
-  logger?: Logger,
+  logger: Logger,
+  sealer: Sealer | undefined,
 ): Hono<AppEnv> {
   return new Hono<AppEnv>().all('/mcp', async (c) => {
     const caller = await authenticate(c.req.raw.headers, {
       policy,
-      ...(sealer && {
-        sealer,
-        resourceMetadataUrl: `${new URL(c.req.url).origin}${OAUTH_PATHS.resourceMetadata}/mcp`,
-      }),
+      sealer,
+      resourceMetadataUrl: sealer
+        ? `${new URL(c.req.url).origin}${OAUTH_PATHS.resourceMetadata}/mcp`
+        : undefined,
     });
-    if (logger && c.req.method === 'POST') {
+    if (c.req.method === 'POST') {
       const mcpClient = await c.req.raw
         .clone()
         .json()

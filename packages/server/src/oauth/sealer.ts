@@ -40,8 +40,8 @@ export class Sealer {
 
   /** Seals `data`; without `ttlSeconds` the result never expires. */
   async seal(kind: string, data: object, ttlSeconds?: number): Promise<string> {
-    const exp = ttlSeconds === undefined ? {} : { exp: Math.floor(this.#now() / 1000) + ttlSeconds };
-    const plain = new TextEncoder().encode(JSON.stringify({ ...data, ...exp }));
+    const exp = ttlSeconds === undefined ? undefined : Math.floor(this.#now() / 1000) + ttlSeconds;
+    const plain = new TextEncoder().encode(JSON.stringify({ ...data, exp }));
     const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
     const cipher = await crypto.subtle.encrypt(
       { name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(kind) },

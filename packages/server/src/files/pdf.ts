@@ -29,8 +29,8 @@ export interface PdfChunk {
   /** Pages in the document. */
   pages: number;
   /** First and last page the text comes from; undefined when there is none. */
-  firstPage?: number;
-  lastPage?: number;
+  firstPage?: number | undefined;
+  lastPage?: number | undefined;
   /** Where the next call continues; null at the end of the document. */
   next: PdfCursor | null;
 }
@@ -96,10 +96,8 @@ export async function readPdf(bytes: Uint8Array, { page, offset, maxChars }: Pdf
     return {
       text: slice,
       pages,
-      ...(slice.length > 0 && {
-        firstPage: page + blockAt(offset),
-        lastPage: page + blockAt(end - 1),
-      }),
+      firstPage: slice.length > 0 ? page + blockAt(offset) : undefined,
+      lastPage: slice.length > 0 ? page + blockAt(end - 1) : undefined,
       next: cursor,
     };
   } finally {

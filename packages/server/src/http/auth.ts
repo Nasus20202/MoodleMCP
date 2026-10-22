@@ -17,9 +17,9 @@ export function tokenFrom(headers: Headers): string {
 export interface AuthOptions {
   policy: SitePolicy;
   /** Present when OAuth is enabled: lets callers present an access token instead of a raw Moodle token. */
-  sealer?: Sealer;
+  sealer?: Sealer | undefined;
   /** Where clients can discover how to sign in (RFC 9728); advertised on 401 when OAuth is enabled. */
-  resourceMetadataUrl?: string;
+  resourceMetadataUrl?: string | undefined;
 }
 
 /**

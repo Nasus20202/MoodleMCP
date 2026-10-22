@@ -17,7 +17,7 @@ export type ReadMode = (typeof ReadMode)[keyof typeof ReadMode];
 export interface ModeChoice {
   mode: typeof ReadMode.Markdown | typeof ReadMode.Extract;
   /** Why the requested mode was not used, for the model. */
-  note?: string;
+  note?: string | undefined;
 }
 
 export interface ModeContext {
@@ -33,7 +33,7 @@ export function chooseMode(
   kind: Kind,
   { canConvert, page }: ModeContext,
 ): ModeChoice {
-  const extract = (note?: string): ModeChoice => ({ mode: ReadMode.Extract, ...(note && { note }) });
+  const extract = (note?: string): ModeChoice => ({ mode: ReadMode.Extract, note });
   switch (requested) {
     case ReadMode.Extract:
       return extract();

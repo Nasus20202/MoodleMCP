@@ -41,7 +41,7 @@ export interface ConfigExample {
   title: string;
   code: string;
   /** Extra step after saving the config, e.g. how to sign in. */
-  note?: string;
+  note?: string | undefined;
 }
 
 const tomlString = (value: string) => JSON.stringify(value);
@@ -96,7 +96,7 @@ export function headerExamples(details: ConnectionDetails): ConfigExample[] {
     {
       title: 'Codex: command',
       code: codexCommand(details),
-      ...(commandNote && { note: commandNote }),
+      note: commandNote,
     },
   ];
 }
