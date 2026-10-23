@@ -1,10 +1,10 @@
 import * as z from 'zod/v4';
 
-import { htmlToMarkdown } from '../files/html-markdown.ts';
 import { MoodleFunction } from '../moodle/functions.ts';
 import { defineCustomTool, limitResult, type ToolContent } from './define.ts';
 import { ToolName } from './names.ts';
-import { resolveMlang, stripHtmlBloat } from './tidy.ts';
+import { shortMarkdown } from './pick.ts';
+import { resolveMlang } from './tidy.ts';
 
 /** Longest text of a section summary or an activity description in the outline; the activity has the rest. */
 const TEXT_CHARS = 500;
@@ -56,12 +56,6 @@ const day = (seconds: number) => new Date(seconds * 1000).toISOString().slice(0,
 
 const kilobytes = (bytes: number) => (bytes < 1024 ? `${bytes} B` : `${Math.round(bytes / 1024)} KB`);
 
-/** Markdown of an HTML text on one line, at most {@link TEXT_CHARS} characters. */
-function brief(html: string | undefined, language: Language): string {
-  const text = htmlToMarkdown(stripHtmlBloat(language(html) ?? '')).replace(/\s+/g, ' ');
-  return text.length > TEXT_CHARS ? `${text.slice(0, TEXT_CHARS)}…` : text;
-}
-
 function fileLine(file: CourseFile): string | undefined {
   if (!file.fileurl) return undefined;
   if (file.type === 'url') return `  - link: ${file.fileurl}`;
@@ -71,19 +65,15 @@ function fileLine(file: CourseFile): string | undefined {
 }
 
 function activityLines(module: CourseModule, language: Language): string[] {
-  const flags = [
-    module.visible === 0 ? 'hidden' : undefined,
-    module.uservisible === false ? 'not available to you' : undefined,
-    module.completion && module.completion > 0
-      ? (COMPLETION[module.completiondata?.state ?? 0] ?? undefined)
-      : undefined,
-    ...(module.dates ?? []).map((d) =>
-      d.label && d.timestamp !== undefined
-        ? `${d.label.replace(/:$/, '')}: ${day(d.timestamp)} UTC`
-        : undefined,
-    ),
-  ].filter(Boolean);
-  const description = brief(module.description, language);
+  const flags: string[] = [];
+  if (module.visible === 0) flags.push('hidden');
+  if (module.uservisible === false) flags.push('not available to you');
+  const state = (module.completion ?? 0) > 0 ? COMPLETION[module.completiondata?.state ?? 0] : undefined;
+  if (state !== undefined) flags.push(state);
+  for (const { label, timestamp } of module.dates ?? []) {
+    if (label && timestamp !== undefined) flags.push(`${label.replace(/:$/, '')}: ${day(timestamp)} UTC`);
+  }
+  const description = shortMarkdown(language(module.description) ?? '', TEXT_CHARS);
   const kind = module.modname ?? 'activity';
   // A label is its text: its name is only that text, shortened.
   const head =
@@ -118,7 +108,7 @@ export function renderOutline(sections: CourseSection[], lang?: string): string 
     const hidden =
       section.visible === 0 ? ' (hidden)' : section.uservisible === false ? ' (not available to you)' : '';
     out.push('', `## ${number}. ${name}${hidden}`);
-    const summary = brief(section.summary, language);
+    const summary = shortMarkdown(language(section.summary) ?? '', TEXT_CHARS);
     if (summary) out.push(summary);
     for (const module of section.modules ?? []) out.push(...activityLines(module, language));
   });

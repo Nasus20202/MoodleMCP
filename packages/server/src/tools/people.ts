@@ -155,12 +155,12 @@ const message = (m: Message) => ({
 });
 
 /** Conversation types in Moodle: 1 between two people, 2 a group, 3 notes to self. */
-const TYPES = { 1: 'individual', 2: 'group', 3: 'self' } as const;
+const TYPES: Record<number, string> = { 1: 'individual', 2: 'group', 3: 'self' };
 
 const conversationInfo = (c: Conversation) => ({
   id: c.id,
   name: c.name,
-  type: TYPES[c.type as keyof typeof TYPES] ?? c.type,
+  type: TYPES[c.type] ?? c.type,
   unread_count: c.unreadcount ?? 0,
   member_count: c.membercount,
   members: (c.members ?? []).map(member),

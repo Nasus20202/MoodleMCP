@@ -6,75 +6,40 @@ import { pageText } from '../files/read.ts';
 import { MoodleFunction } from '../moodle/functions.ts';
 import { defineCustomTool, imageNote, jsonContent, renderResult, type ToolContent } from './define.ts';
 import { ToolName } from './names.ts';
-import { withBriefIntro } from './pick.ts';
+import { describeItem, describePage, type Fields } from './pick.ts';
 import { embeddedImageBlocks, readHtml } from './read-file.ts';
 import { DEFAULT_CHARS, MAX_CHARS } from './read-file-results.ts';
 import { resolveMlang, slimMoodle, stripHtmlBloat } from './tidy.ts';
 
-/** How a kind of activity is listed: the Moodle function and the key its list sits under. */
+const KIND_NAMES = ['resource', 'page', 'url', 'label', 'glossary', 'lesson', 'choice', 'feedback'] as const;
+type KindName = (typeof KIND_NAMES)[number];
+
+/** How a kind of activity is listed: the Moodle function, the key its list sits under, and how an item is shown. */
 interface ActivityKind {
   fn: MoodleFunction;
   key: string;
-  what: string;
+  describe: (item: unknown) => unknown;
 }
 
-const KINDS = {
-  resource: { fn: MoodleFunction.Resources, key: 'resources', what: 'files (slides, notes, documents)' },
-  page: { fn: MoodleFunction.Pages, key: 'pages', what: 'pages' },
-  url: { fn: MoodleFunction.Urls, key: 'urls', what: 'external links' },
-  label: { fn: MoodleFunction.Labels, key: 'labels', what: 'text labels' },
-  glossary: { fn: MoodleFunction.Glossaries, key: 'glossaries', what: 'glossaries' },
-  lesson: { fn: MoodleFunction.Lessons, key: 'lessons', what: 'lessons' },
-  choice: { fn: MoodleFunction.Choices, key: 'choices', what: 'choices (polls)' },
-  feedback: { fn: MoodleFunction.Feedbacks, key: 'feedbacks', what: 'feedback surveys' },
-} as const satisfies Record<string, ActivityKind>;
+/** Resources keep their file lists as they are: the `fileurl` in them is what read_file needs. */
+const asIs = (item: unknown) => item;
 
-type KindName = keyof typeof KINDS;
-const KIND_NAMES = Object.keys(KINDS) as [KindName, ...KindName[]];
+const KINDS: Record<KindName, ActivityKind> = {
+  resource: { fn: MoodleFunction.Resources, key: 'resources', describe: asIs },
+  page: { fn: MoodleFunction.Pages, key: 'pages', describe: describePage },
+  url: { fn: MoodleFunction.Urls, key: 'urls', describe: describeItem },
+  label: { fn: MoodleFunction.Labels, key: 'labels', describe: describeItem },
+  glossary: { fn: MoodleFunction.Glossaries, key: 'glossaries', describe: describeItem },
+  lesson: { fn: MoodleFunction.Lessons, key: 'lessons', describe: describeItem },
+  choice: { fn: MoodleFunction.Choices, key: 'choices', describe: describeItem },
+  feedback: { fn: MoodleFunction.Feedbacks, key: 'feedbacks', describe: describeItem },
+};
 
 const courseId = z
   .number()
   .int()
   .positive()
   .describe('Moodle course id: the `id` of a course from list_courses or search_courses');
-
-/**
- * A page in a list is described, not shown: its body and its file list (every picture in it) can run to
- * hundreds of kilobytes for a course. Read the page with get_page.
- */
-function describePage(page: unknown): unknown {
-  if (typeof page !== 'object' || page === null) return page;
-  const { id, coursemodule, course, name, intro, timemodified, section, visible, content, contentfiles } =
-    page as Record<string, unknown>;
-  return withBriefIntro(
-    {
-      id,
-      coursemodule,
-      course,
-      name,
-      intro,
-      section,
-      visible,
-      timemodified,
-      content_chars: typeof content === 'string' ? content.length : 0,
-      content_files: Array.isArray(contentfiles) ? contentfiles.length : 0,
-    },
-    500,
-  );
-}
-
-/**
- * Lists of picture files (`introfiles`) can be longer than the items they belong to; the count says whether
- * there are any, and the pictures themselves are in the text of the item.
- */
-function describeItem(item: unknown): unknown {
-  if (typeof item !== 'object' || item === null) return item;
-  const { introfiles, ...rest } = item as Record<string, unknown>;
-  const described =
-    'introfiles' in item ? { ...rest, intro_files: Array.isArray(introfiles) ? introfiles.length : 0 } : item;
-  // The intro of a label is its text, of the others a few sentences in markup: as short Markdown either way.
-  return withBriefIntro(described, 1500);
-}
 
 export const listActivitiesTool = defineCustomTool({
   name: ToolName.ListActivities,
@@ -91,12 +56,10 @@ export const listActivitiesTool = defineCustomTool({
     type: z.enum(KIND_NAMES).describe('the kind of activity to list'),
   }),
   async run({ client }, { course_id, type }) {
-    const kind: ActivityKind = KINDS[type];
-    const result = await client.call<Record<string, unknown>>(kind.fn, { 'courseids[0]': course_id });
-    const list = result[kind.key];
-    // Resources keep their file lists: the `fileurl` in them is what read_file needs.
-    const reduce = type === 'page' ? describePage : type === 'resource' ? undefined : describeItem;
-    const shaped = reduce && Array.isArray(list) ? { ...result, [kind.key]: list.map(reduce) } : result;
+    const { fn, key, describe } = KINDS[type];
+    const result = await client.call<Fields>(fn, { 'courseids[0]': course_id });
+    const list = result[key];
+    const shaped = Array.isArray(list) ? { ...result, [key]: list.map(describe) } : result;
     return renderResult(client, slimMoodle(shaped));
   },
 });

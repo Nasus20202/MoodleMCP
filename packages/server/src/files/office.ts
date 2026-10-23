@@ -54,24 +54,27 @@ function inlineText(runs: Run[], formatted: boolean): string {
 }
 
 interface Block {
-  kind: 'paragraph' | 'heading' | 'list' | 'table';
+  /** `blank` is an empty paragraph: it says there was a break, and writes nothing. */
+  kind: 'paragraph' | 'heading' | 'list' | 'table' | 'blank';
   text: string;
 }
 
+const BLANK: Block = { kind: 'blank', text: '' };
+
 /** The style name of a paragraph says whether it is a heading (`Heading2`, `Title`) or a numbered list. */
-function paragraphBlock(xml: string): Block | 'blank' {
+function paragraphBlock(xml: string): Block {
   const properties = /<w:pPr>([\s\S]*?)<\/w:pPr>/.exec(xml)?.[1] ?? '';
   const style = /<w:pStyle\b[^>]*w:val="([^"]*)"/.exec(properties)?.[1] ?? '';
   const level = /^heading\s*([1-6])$/i.exec(style)?.[1] ?? (/^title$/i.test(style) ? '1' : undefined);
   const runs = runsOf(xml);
   if (level !== undefined) {
     const text = inlineText(runs, false).replace(/\s+/g, ' ').trim();
-    return text === '' ? 'blank' : { kind: 'heading', text: `${'#'.repeat(Number(level))} ${text}` };
+    return text === '' ? BLANK : { kind: 'heading', text: `${'#'.repeat(Number(level))} ${text}` };
   }
   const text = inlineText(runs, true)
     .replace(/[ \t]+\n/g, '\n')
     .trim();
-  if (text === '') return 'blank';
+  if (text === '') return BLANK;
   if (properties.includes('<w:numPr>') || /^list/i.test(style)) {
     const depth = Number(/<w:ilvl\b[^>]*w:val="(\d+)"/.exec(properties)?.[1] ?? 0);
     const marker = /number/i.test(style) ? '1.' : '-';
@@ -97,14 +100,14 @@ function tableBlock(xml: string): Block {
  */
 export function docxText(bytes: Uint8Array): string {
   const xml = unzipText(bytes, (name) => name === 'word/document.xml').get('word/document.xml') ?? '';
-  const blocks: (Block | 'blank')[] = [
-    ...xml.matchAll(/<w:tbl\b[\s\S]*?<\/w:tbl>|<w:p\b[\s\S]*?<\/w:p>/g),
-  ].map(([match]) => (match.startsWith('<w:tbl') ? tableBlock(match) : paragraphBlock(match)));
+  const blocks: Block[] = [...xml.matchAll(/<w:tbl\b[\s\S]*?<\/w:tbl>|<w:p\b[\s\S]*?<\/w:p>/g)].map(
+    ([match]) => (match.startsWith('<w:tbl') ? tableBlock(match) : paragraphBlock(match)),
+  );
   let out = '';
   let previous: Block | undefined;
   let gap = false;
   for (const block of blocks) {
-    if (block === 'blank') {
+    if (block.kind === 'blank') {
       gap = true;
       continue;
     }

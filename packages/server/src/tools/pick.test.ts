@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { briefHtml, pickCompletion, pickEvents, pickGrades, pickQuizzes, withBriefIntro } from './pick.ts';
+import {
+  briefHtml,
+  describeItem,
+  describePage,
+  pickCompletion,
+  pickEvents,
+  pickGrades,
+  pickQuizzes,
+  shortMarkdown,
+  withBriefIntro,
+} from './pick.ts';
 
 describe('briefHtml', () => {
   it('is one line of Markdown, cut with an ellipsis', () => {
@@ -179,5 +189,57 @@ describe('pickCompletion', () => {
     expect(pickCompletion({ statuses: [{ cmid: 1, state: 0 }] })).toEqual({
       statuses: [{ cmid: 1, state: 0 }],
     });
+  });
+});
+
+describe('shortMarkdown', () => {
+  it('is briefHtml for a string you know is one', () => {
+    expect(shortMarkdown('<p>a <b>b</b></p>')).toBe('a **b**');
+    expect(shortMarkdown('<p>abcdef</p>', 3)).toBe('abc…');
+    expect(shortMarkdown('')).toBe('');
+  });
+});
+
+describe('describePage', () => {
+  it('reports the size of a page and its files instead of showing them', () => {
+    const page = {
+      id: 1,
+      coursemodule: 8,
+      name: 'P',
+      intro: '<p>About <b>this</b></p>',
+      content: '<p>abc</p>',
+      contentfiles: [{ fileurl: 'a' }, { fileurl: 'b' }],
+      displayoptions: 'a:1:{}',
+    };
+    expect(describePage(page)).toEqual({
+      id: 1,
+      coursemodule: 8,
+      name: 'P',
+      intro: 'About **this**',
+      content_chars: 10,
+      content_files: 2,
+    });
+  });
+
+  it('copes with a page without content and with something that is not a page', () => {
+    expect(describePage({ id: 1 })).toEqual({ id: 1, content_chars: 0, content_files: 0 });
+    expect(describePage('x')).toBe('x');
+  });
+});
+
+describe('describeItem', () => {
+  it('counts the intro pictures and shortens the intro, keeping the other fields', () => {
+    expect(describeItem({ id: 1, intro: '<h3>Exam</h3>', introfiles: [{}, {}], visible: 1 })).toEqual({
+      id: 1,
+      intro: '### Exam',
+      intro_files: 2,
+      visible: 1,
+    });
+  });
+
+  it('adds no count when there is no list of pictures, and cuts a long intro at 1,500 characters', () => {
+    expect(describeItem({ id: 1 })).toEqual({ id: 1 });
+    const long = describeItem({ intro: `<p>${'word '.repeat(600)}</p>` }) as { intro: string };
+    expect(long.intro).toHaveLength(1501);
   });
 });

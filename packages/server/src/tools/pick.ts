@@ -6,9 +6,9 @@ import { stripHtmlBloat } from './tidy.ts';
  * fields that answer the question the tool is asked, and every id another tool takes, and drops the rest.
  */
 
-type Fields = Record<string, unknown>;
+export type Fields = Record<string, unknown>;
 
-const isFields = (value: unknown): value is Fields =>
+export const isFields = (value: unknown): value is Fields =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /** The listed fields of `item` that it has. */
@@ -25,15 +25,45 @@ function mapList(result: unknown, key: string, fn: (item: unknown) => unknown): 
  * An HTML text as one line of Markdown, cut at `max` characters. Intros of activities are long pages of markup
  * for a few sentences of text; the activity itself (get_page and so on) has the full text.
  */
-export function briefHtml(html: unknown, max = 800): unknown {
-  if (typeof html !== 'string') return html;
+export function shortMarkdown(html: string, max = 800): string {
   const text = htmlToMarkdown(stripHtmlBloat(html)).replace(/\s+/g, ' ').trim();
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
+/** {@link shortMarkdown} for a field that may hold anything: only a string is changed. */
+export const briefHtml = (value: unknown, max = 800): unknown =>
+  typeof value === 'string' ? shortMarkdown(value, max) : value;
+
 /** The same item with its `intro` as {@link briefHtml}. */
 export function withBriefIntro(item: unknown, max = 800): unknown {
   return isFields(item) && 'intro' in item ? { ...item, intro: briefHtml(item.intro, max) } : item;
+}
+
+/**
+ * A page in a list is described, not shown: its body and its file list (every picture in it) can run to
+ * hundreds of kilobytes for a course. Read the page with get_page.
+ */
+export function describePage(page: unknown): unknown {
+  if (!isFields(page)) return page;
+  const described = {
+    ...pick(page, ['id', 'coursemodule', 'course', 'name', 'intro', 'section', 'visible', 'timemodified']),
+    content_chars: typeof page.content === 'string' ? page.content.length : 0,
+    content_files: Array.isArray(page.contentfiles) ? page.contentfiles.length : 0,
+  };
+  return withBriefIntro(described, 500);
+}
+
+/**
+ * Any other activity of a list: its list of intro pictures (`introfiles`), which can be longer than the item,
+ * becomes a count (the pictures are in the text of the item), and its intro short Markdown. The intro of a
+ * label is its text, of the others a few sentences in markup.
+ */
+export function describeItem(item: unknown): unknown {
+  if (!isFields(item)) return item;
+  const { introfiles, ...rest } = item;
+  const described =
+    'introfiles' in item ? { ...rest, intro_files: Array.isArray(introfiles) ? introfiles.length : 0 } : item;
+  return withBriefIntro(described, 1500);
 }
 
 const QUIZ_FIELDS = [
@@ -124,17 +154,20 @@ export const pickGrades = (result: unknown): unknown =>
     isFields(grades) ? mapList(grades, 'gradeitems', pickGradeItem) : grades,
   );
 
-interface RuleDetail {
-  rulename?: string;
-  rulevalue?: { status?: number; description?: string };
+/** One rule behind a completion state as a line of text: its name, then what it says ("Done: View"). */
+function ruleLine(detail: unknown): string {
+  if (!isFields(detail)) return '';
+  const value = isFields(detail.rulevalue) ? detail.rulevalue : {};
+  return [detail.rulename, value.description]
+    .filter((part) => typeof part === 'string' && part !== '')
+    .join(': ');
 }
 
-/** One activity's completion: its state and the rules behind it as short "rule: status" lines. */
+/** One activity's completion: its state and the rules behind it as short lines. */
 function pickStatus(status: unknown): unknown {
   if (!isFields(status)) return status;
-  const details = Array.isArray(status.details) ? (status.details as RuleDetail[]) : [];
-  const rules = details
-    .map((d) => [d.rulename, d.rulevalue?.description].filter(Boolean).join(': '))
+  const rules = (Array.isArray(status.details) ? status.details : [])
+    .map(ruleLine)
     .filter((line) => line !== '');
   return {
     ...pick(status, ['cmid', 'modname', 'instance', 'state', 'timecompleted', 'tracking', 'overrideby']),
