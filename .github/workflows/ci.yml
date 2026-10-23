@@ -19,11 +19,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out the repository
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/setup
+      - name: Set up pnpm and Node, install dependencies
+        uses: ./.github/actions/setup
 
       - name: Lint (ESLint and Prettier)
         run: pnpm run lint
@@ -47,17 +49,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out the repository
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/setup
+      - name: Set up pnpm and Node, install dependencies
+        uses: ./.github/actions/setup
 
-      - id: playwright
+      - name: Find the Playwright version
+        id: playwright
         run: echo "version=$(pnpm --filter @moodle-mcp/e2e exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@v6
+      - name: Restore the Playwright browser cache
         id: browsers
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
@@ -103,11 +109,13 @@ jobs:
       # renovate: datasource=npm depName=@opencode/cli
       OPENCODE_VERSION: 2.1.3
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out the repository
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/setup
+      - name: Set up pnpm and Node, install dependencies
+        uses: ./.github/actions/setup
 
       - name: Install Claude Code
         if: matrix.client == 'claude'
@@ -122,11 +130,13 @@ jobs:
         run: npm install --global "@opencode/cli@${OPENCODE_VERSION}"
 
       # The OAuth sign-ins are completed on the real consent page, in a browser. Same cache as the browser job.
-      - id: playwright
+      - name: Find the Playwright version
+        id: playwright
         run: echo "version=$(pnpm --filter @moodle-mcp/e2e exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@v6
+      - name: Restore the Playwright browser cache
         id: browsers
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
