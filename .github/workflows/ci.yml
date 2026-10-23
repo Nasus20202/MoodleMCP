@@ -81,3 +81,64 @@ jobs:
           name: playwright-traces
           path: packages/e2e/test-results
           retention-days: 7
+
+  # The real coding-agent CLIs against the Worker, one job per CLI. A scripted model stands in for the model
+  # provider, so nothing here needs an account or a secret. See packages/e2e/src/clients.
+  clients:
+    name: Client compatibility (${{ matrix.client }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        client: [claude, codex, opencode]
+    env:
+      E2E_CLIENTS: ${{ matrix.client }}
+      # Fail when the CLI is missing instead of skipping its rows.
+      E2E_REQUIRE_CLIENTS: '1'
+      # renovate: datasource=npm depName=@anthropic-ai/claude-code
+      CLAUDE_CODE_VERSION: 2.1.308
+      # renovate: datasource=npm depName=@openai/codex
+      CODEX_VERSION: 0.163.0
+      # renovate: datasource=npm depName=@opencode/cli
+      OPENCODE_VERSION: 2.1.3
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup
+
+      - name: Install Claude Code
+        if: matrix.client == 'claude'
+        run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+
+      - name: Install Codex
+        if: matrix.client == 'codex'
+        run: npm install --global "@openai/codex@${CODEX_VERSION}"
+
+      - name: Install opencode
+        if: matrix.client == 'opencode'
+        run: npm install --global "@opencode/cli@${OPENCODE_VERSION}"
+
+      # The OAuth sign-ins are completed on the real consent page, in a browser. Same cache as the browser job.
+      - id: playwright
+        run: echo "version=$(pnpm --filter @moodle-mcp/e2e exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v6
+        id: browsers
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      - name: Install Chromium
+        if: steps.browsers.outputs.cache-hit != 'true'
+        run: pnpm --filter @moodle-mcp/e2e exec playwright install --with-deps chromium
+
+      # The system libraries are not part of the cache.
+      - name: Install Chromium system dependencies
+        if: steps.browsers.outputs.cache-hit == 'true'
+        run: pnpm --filter @moodle-mcp/e2e exec playwright install-deps chromium
+
+      - name: Run the client matrix
+        run: pnpm run test:clients
