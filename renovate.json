@@ -13,6 +13,22 @@
         "fileFilters": ["packages/server/worker-configuration.d.ts"],
         "executionMode": "branch"
       }
+    },
+    {
+      "description": "The coding-agent CLIs the client tests run: one pull request a week, since they release almost daily",
+      "matchPackageNames": ["@anthropic-ai/claude-code", "@openai/codex", "@opencode/cli"],
+      "groupName": "coding agent CLIs",
+      "schedule": ["before 6am on monday"]
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Versions of the coding-agent CLIs installed by the clients job in ci.yml",
+      "managerFilePatterns": ["/^\\.github/workflows/ci\\.yml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\n\\s+\\w+: (?<currentValue>\\S+)"
+      ]
     }
   ]
 }

@@ -5,12 +5,15 @@ runs:
   using: composite
   steps:
     # Reads the pnpm version from "packageManager" in package.json.
-    - uses: pnpm/action-setup@v6
+    - name: Install pnpm
+      uses: pnpm/action-setup@v6
 
-    - uses: actions/setup-node@v7
+    - name: Install Node and cache the pnpm store
+      uses: actions/setup-node@v7
       with:
         node-version-file: .node-version
         cache: pnpm
 
-    - run: pnpm install --frozen-lockfile
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
       shell: bash
