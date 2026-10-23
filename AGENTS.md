@@ -79,7 +79,7 @@ pnpm run deploy  # not `pnpm deploy`, which is a different built-in command
 
 Results go through `slimMoodle` (`tools/tidy.ts`) in `defineTool`: it drops null and empty values and the
 `NOISE_KEY` fields, so add a field there only if it never helps a reader. When a tool's JSON is mostly settings the
-model never needs, give it a `shape` that picks fields (like `pickQuizzes`) or, for a nested listing, an extractor
+model never needs, give it a `shape` that picks fields (the extractors in `tools/pick.ts`, such as `pickQuizzes`) or, for a nested listing, an extractor
 that writes Markdown (like `get_course_contents` in `outline.ts`); keep every id and URL another tool takes. Tools
 that build their own result use `renderResult` and `limitResult`, which cuts anything over 80,000 characters.
 

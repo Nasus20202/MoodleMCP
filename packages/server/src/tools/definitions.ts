@@ -11,8 +11,9 @@ import {
   getUserProfileTool,
   listConversationsTool,
 } from './people.ts';
+import { pickCompletion, pickEvents, pickGrades, pickQuizzes } from './pick.ts';
 import { readFileTool } from './read-file.ts';
-import { pickQuizzes, pickSiteInfo } from './tidy.ts';
+import { pickSiteInfo } from './tidy.ts';
 
 const id = (describe: string) => z.number().int().positive().describe(describe);
 const courseId = id('Moodle course id: the `id` of a course from list_courses or search_courses');
@@ -206,6 +207,7 @@ export const TOOLS = [
     input: noInput,
     fn: MoodleFunction.UpcomingEvents,
     params: () => ({}),
+    shape: pickEvents,
   }),
   defineTool({
     name: ToolName.GetCourseEvents,
@@ -216,6 +218,7 @@ export const TOOLS = [
     input: courseInput,
     fn: MoodleFunction.CourseEvents,
     params: ({ course_id }) => ({ courseid: course_id }),
+    shape: pickEvents,
   }),
   defineTool({
     name: ToolName.GetCourseCompletion,
@@ -225,6 +228,7 @@ export const TOOLS = [
     input: courseInput,
     fn: MoodleFunction.CourseCompletion,
     params: async ({ course_id }, client) => ({ courseid: course_id, userid: await client.userId() }),
+    shape: pickCompletion,
   }),
   defineTool({
     name: ToolName.GetGrades,
@@ -234,6 +238,7 @@ export const TOOLS = [
     input: courseInput,
     fn: MoodleFunction.GradeItems,
     params: async ({ course_id }, client) => ({ courseid: course_id, userid: await client.userId() }),
+    shape: pickGrades,
   }),
   defineTool({
     name: ToolName.GetGradesOverview,

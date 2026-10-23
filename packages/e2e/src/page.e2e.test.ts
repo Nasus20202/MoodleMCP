@@ -25,9 +25,10 @@ describe('pages and other activities against a mock Moodle', () => {
       ['feedback', 'feedbacks'],
     ])('lists %s', async (type, key) => {
       const result = await alice().call('list_activities', { course_id: COURSE_ALG, type });
-      expect(JSON.parse(textOf(result))).toEqual(
-        slimmed({ [key]: (alg as unknown as Record<string, unknown[]>)[key], warnings: [] }),
-      );
+      // A label's intro is its text, which comes back as Markdown rather than HTML.
+      const items = (alg as unknown as Record<string, Record<string, unknown>[]>)[key] ?? [];
+      const expected = items.map((i) => (type === 'label' ? { ...i, intro: '### Exam in January' } : i));
+      expect(JSON.parse(textOf(result))).toEqual(slimmed({ [key]: expected, warnings: [] }));
     });
 
     it('lists pages without their bodies, which get_page then reads', async () => {

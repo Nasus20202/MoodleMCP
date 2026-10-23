@@ -5,7 +5,6 @@ import {
   ALICE,
   BOB,
   CHOICE_RESULTS,
-  COMPLETION,
   COURSE_ALG,
   COURSE_DATA,
   COURSE_DB,
@@ -14,7 +13,6 @@ import {
   DISCUSSIONS,
   FEEDBACK_ANALYSIS,
   GLOSSARY_ENTRIES,
-  GRADE_ITEMS,
   IDS,
   LESSON_PAGES,
   NOTIFICATIONS,
@@ -22,7 +20,6 @@ import {
   QUIZ_ATTEMPTS,
   QUIZ_REVIEW,
   SUBMISSION,
-  UPCOMING,
   WIKI_PAGES,
 } from './mock/data.ts';
 import { slimmed } from './slimmed.ts';
@@ -145,7 +142,23 @@ const CASES: ToolCase[] = [
     tool: 'list_quizzes',
     args: { course_id: COURSE_ALG },
     fn: 'mod_quiz_get_quizzes_by_courses',
-    expected: { quizzes: alg.quizzes, warnings: [] },
+    // The intro is short Markdown and the quiz's dozens of settings are left out.
+    expected: {
+      quizzes: [
+        {
+          id: IDS.quiz,
+          course: COURSE_ALG,
+          coursemodule: 2010,
+          name: 'Sorting quiz',
+          timeopen: 1_761_000_000,
+          timeclose: 1_762_500_000,
+          timelimit: 1800,
+          attempts: 2,
+          grade: 10,
+          intro: 'Be **quick**.',
+        },
+      ],
+    },
   },
   {
     tool: 'get_quiz_attempts',
@@ -164,27 +177,88 @@ const CASES: ToolCase[] = [
     tool: 'get_upcoming_events',
     args: {},
     fn: 'core_calendar_get_calendar_upcoming_view',
-    expected: UPCOMING,
+    // No icon, edit link or course summary; the description is Markdown.
+    expected: {
+      events: [
+        {
+          id: 900,
+          name: 'Homework 1 is due',
+          timestart: 1_762_000_000,
+          description: 'Hand in **by Friday**.',
+          course: { id: COURSE_ALG, shortname: 'ALG' },
+        },
+      ],
+      defaulteventcontext: 1,
+    },
   },
   {
     tool: 'get_course_events',
     args: { course_id: COURSE_ALG },
     fn: 'core_calendar_get_action_events_by_course',
-    expected: { events: alg.events, firstid: 900, lastid: 900 },
+    expected: {
+      events: [
+        {
+          id: 900,
+          name: 'Homework 1 is due',
+          modulename: 'assign',
+          instance: IDS.assign,
+          timestart: 1_762_000_000,
+          description: 'Hand in **by Friday**.',
+          course: { id: COURSE_ALG, fullname: 'Algorithms', shortname: 'ALG' },
+          action: {
+            name: 'addsubmission',
+            url: 'https://moodle.example.edu/2025/mod/assign/view.php?id=2001',
+            actionable: true,
+          },
+        },
+      ],
+      firstid: 900,
+      lastid: 900,
+    },
   },
   {
     tool: 'get_course_completion',
     args: { course_id: COURSE_ALG },
     fn: 'core_completion_get_activities_completion_status',
     looksUpUser: true,
-    expected: COMPLETION,
+    // The rules behind the state are lines of text.
+    expected: {
+      statuses: [
+        {
+          cmid: IDS.cmidAssign,
+          modname: 'assign',
+          instance: IDS.assign,
+          state: 1,
+          timecompleted: 1_761_500_000,
+          tracking: 2,
+          rules: ['completionview: Done: View'],
+        },
+      ],
+    },
   },
   {
     tool: 'get_grades',
     args: { course_id: COURSE_ALG },
     fn: 'gradereport_user_get_grade_items',
     looksUpUser: true,
-    expected: GRADE_ITEMS,
+    // The grade, its range and feedback as Markdown; bookkeeping flags are left out.
+    expected: {
+      usergrades: [
+        {
+          courseid: COURSE_ALG,
+          userid: ALICE.id,
+          gradeitems: [
+            {
+              id: 1,
+              itemname: 'Homework 1',
+              gradeformatted: '8.50',
+              percentageformatted: '85 %',
+              feedback: 'Well *done*',
+            },
+          ],
+        },
+      ],
+    },
   },
   {
     tool: 'get_grades_overview',

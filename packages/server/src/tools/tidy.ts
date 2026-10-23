@@ -133,35 +133,3 @@ export function pickSiteInfo(info: unknown): unknown {
   const source = info as Record<string, unknown>;
   return Object.fromEntries(SITE_INFO_FIELDS.filter((f) => f in source).map((f) => [f, source[f]]));
 }
-
-/** The fields of a quiz that answer "when, how long, how many tries, how graded"; the rest are 40 or so settings. */
-const QUIZ_FIELDS = [
-  'id',
-  'coursemodule',
-  'course',
-  'name',
-  'intro',
-  'timeopen',
-  'timeclose',
-  'timelimit',
-  'attempts',
-  'grademethod',
-  'grade',
-  'sumgrades',
-  'hasquestions',
-  'section',
-  'visible',
-] as const;
-
-/** Keeps those fields of every quiz in `core mod_quiz_get_quizzes_by_courses`' result. */
-export function pickQuizzes(result: unknown): unknown {
-  if (typeof result !== 'object' || result === null) return result;
-  const { quizzes, ...rest } = result as { quizzes?: unknown };
-  if (!Array.isArray(quizzes)) return result;
-  return {
-    ...rest,
-    quizzes: quizzes.map((quiz: Record<string, unknown>) =>
-      Object.fromEntries(QUIZ_FIELDS.filter((f) => f in quiz).map((f) => [f, quiz[f]])),
-    ),
-  };
-}

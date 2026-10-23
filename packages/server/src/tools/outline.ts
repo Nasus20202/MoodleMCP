@@ -87,8 +87,8 @@ function activityLines(module: CourseModule, language: Language): string[] {
   const kind = module.modname ?? 'activity';
   // A label is its text: its name is only that text, shortened.
   const head =
-    kind === 'label' && description
-      ? `- label (cmid ${module.id}): ${description}`
+    kind === 'label'
+      ? `- label (cmid ${module.id})${description ? `: ${description}` : ''}`
       : `- ${kind} **${language(module.name) ?? ''}** (cmid ${module.id}${module.instance === undefined ? '' : `, instance ${module.instance}`})`;
   return [
     flags.length > 0 ? `${head} — ${flags.join('; ')}` : head,

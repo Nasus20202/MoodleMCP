@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { callTool, setup } from '../app-test-utils.ts';
 import { limitResult, MAX_RESULT_CHARS } from './define.ts';
 import { ToolName } from './names.ts';
-import { pickQuizzes } from './tidy.ts';
+import { pickQuizzes } from './pick.ts';
 
 describe('limitResult', () => {
   it('leaves a result that fits alone', () => {

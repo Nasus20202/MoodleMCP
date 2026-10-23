@@ -85,8 +85,10 @@ the web service request itself, like any other call, in its own logs.
 stay), scripts and styles are removed from HTML, multi-language text is resolved to the user's language, and pictures
 pasted into HTML come back as image blocks. A few tools shape their answer for a reader instead:
 `get_course_contents` is a Markdown outline (section headings, one line per activity with its `cmid` and `instance`,
-files and links under it, labels with their text), `get_page` and `read_file` return Markdown, and `list_quizzes`
-keeps the fields a student asks about. Any result over 80,000 characters is cut with a `truncated` marker that
+files and links under it, labels with their text), `get_page` and `read_file` return Markdown, and these keep
+the fields that answer the question and write HTML texts (intros, descriptions, feedback) as short Markdown:
+`list_activities`, `list_quizzes`, `get_course_events`, `get_upcoming_events`, `get_grades` and
+`get_course_completion`. Any result over 80,000 characters is cut with a `truncated` marker that
 says how much there was, so a client never has to cut it silently.
 
 [tomarkdown]: https://developers.cloudflare.com/workers-ai/features/markdown-conversion/

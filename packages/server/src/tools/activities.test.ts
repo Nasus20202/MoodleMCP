@@ -234,10 +234,10 @@ describe('list_activities', () => {
     });
   });
 
-  it('keeps the bodies of other kinds, such as labels', async () => {
+  it('shows the text of other kinds, such as labels, as short Markdown', async () => {
     const { app } = setup(() => ({ labels: [{ id: 1, intro: '<h3>Exam</h3>' }] }));
     const { body } = await callTool(app, ToolName.ListActivities, { course_id: 3, type: 'label' });
-    expect(body.result?.content?.[0]?.text).toContain('<h3>Exam</h3>');
+    expect(body.result?.content?.[0]?.text).toContain('### Exam');
   });
 
   it('rejects an unknown type without calling Moodle', async () => {
@@ -252,7 +252,7 @@ describe('list_activities', () => {
     const label = setup(() => ({ labels: [item] }));
     const labels = await callTool(label.app, ToolName.ListActivities, { course_id: 3, type: 'label' });
     expect(JSON.parse(labels.body.result?.content?.[0]?.text ?? '')).toEqual({
-      labels: [{ id: 1, intro: '<p>x</p>', intro_files: 2 }],
+      labels: [{ id: 1, intro: 'x', intro_files: 2 }],
     });
     const resource = setup(() => ({ resources: [{ ...item, contentfiles: [{ fileurl: 'u' }] }] }));
     const resources = await callTool(resource.app, ToolName.ListActivities, {

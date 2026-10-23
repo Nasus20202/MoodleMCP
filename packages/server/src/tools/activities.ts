@@ -6,6 +6,7 @@ import { pageText } from '../files/read.ts';
 import { MoodleFunction } from '../moodle/functions.ts';
 import { defineCustomTool, imageNote, jsonContent, renderResult, type ToolContent } from './define.ts';
 import { ToolName } from './names.ts';
+import { withBriefIntro } from './pick.ts';
 import { embeddedImageBlocks, readHtml } from './read-file.ts';
 import { DEFAULT_CHARS, MAX_CHARS } from './read-file-results.ts';
 import { resolveMlang, slimMoodle, stripHtmlBloat } from './tidy.ts';
@@ -45,29 +46,34 @@ function describePage(page: unknown): unknown {
   if (typeof page !== 'object' || page === null) return page;
   const { id, coursemodule, course, name, intro, timemodified, section, visible, content, contentfiles } =
     page as Record<string, unknown>;
-  return {
-    id,
-    coursemodule,
-    course,
-    name,
-    intro,
-    section,
-    visible,
-    timemodified,
-    content_chars: typeof content === 'string' ? content.length : 0,
-    content_files: Array.isArray(contentfiles) ? contentfiles.length : 0,
-  };
+  return withBriefIntro(
+    {
+      id,
+      coursemodule,
+      course,
+      name,
+      intro,
+      section,
+      visible,
+      timemodified,
+      content_chars: typeof content === 'string' ? content.length : 0,
+      content_files: Array.isArray(contentfiles) ? contentfiles.length : 0,
+    },
+    500,
+  );
 }
 
 /**
  * Lists of picture files (`introfiles`) can be longer than the items they belong to; the count says whether
  * there are any, and the pictures themselves are in the text of the item.
  */
-function withoutIntroFiles(item: unknown): unknown {
+function describeItem(item: unknown): unknown {
   if (typeof item !== 'object' || item === null) return item;
-  if (!('introfiles' in item)) return item;
   const { introfiles, ...rest } = item as Record<string, unknown>;
-  return { ...rest, intro_files: Array.isArray(introfiles) ? introfiles.length : 0 };
+  const described =
+    'introfiles' in item ? { ...rest, intro_files: Array.isArray(introfiles) ? introfiles.length : 0 } : item;
+  // The intro of a label is its text, of the others a few sentences in markup: as short Markdown either way.
+  return withBriefIntro(described, 1500);
 }
 
 export const listActivitiesTool = defineCustomTool({
@@ -89,7 +95,7 @@ export const listActivitiesTool = defineCustomTool({
     const result = await client.call<Record<string, unknown>>(kind.fn, { 'courseids[0]': course_id });
     const list = result[kind.key];
     // Resources keep their file lists: the `fileurl` in them is what read_file needs.
-    const reduce = type === 'page' ? describePage : type === 'resource' ? undefined : withoutIntroFiles;
+    const reduce = type === 'page' ? describePage : type === 'resource' ? undefined : describeItem;
     const shaped = reduce && Array.isArray(list) ? { ...result, [kind.key]: list.map(reduce) } : result;
     return renderResult(client, slimMoodle(shaped));
   },
