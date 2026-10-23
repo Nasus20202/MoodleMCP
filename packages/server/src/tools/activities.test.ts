@@ -246,4 +246,19 @@ describe('list_activities', () => {
     expect(body.result?.isError ?? body.error).toBeTruthy();
     expect(moodle.calls).toHaveLength(0);
   });
+
+  it('reports the number of intro pictures instead of listing them, except for resources', async () => {
+    const item = { id: 1, intro: '<p>x</p>', introfiles: [{ fileurl: 'a' }, { fileurl: 'b' }] };
+    const label = setup(() => ({ labels: [item] }));
+    const labels = await callTool(label.app, ToolName.ListActivities, { course_id: 3, type: 'label' });
+    expect(JSON.parse(labels.body.result?.content?.[0]?.text ?? '')).toEqual({
+      labels: [{ id: 1, intro: '<p>x</p>', intro_files: 2 }],
+    });
+    const resource = setup(() => ({ resources: [{ ...item, contentfiles: [{ fileurl: 'u' }] }] }));
+    const resources = await callTool(resource.app, ToolName.ListActivities, {
+      course_id: 3,
+      type: 'resource',
+    });
+    expect(resources.body.result?.content?.[0]?.text).toContain('"fileurl":"u"');
+  });
 });

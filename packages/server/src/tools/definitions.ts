@@ -11,7 +11,7 @@ import {
   listConversationsTool,
 } from './people.ts';
 import { readFileTool } from './read-file.ts';
-import { pickSiteInfo } from './tidy.ts';
+import { pickQuizzes, pickSiteInfo } from './tidy.ts';
 
 const id = (describe: string) => z.number().int().positive().describe(describe);
 const courseId = id('Moodle course id: the `id` of a course from list_courses or search_courses');
@@ -182,6 +182,7 @@ export const TOOLS = [
     input: courseInput,
     fn: MoodleFunction.Quizzes,
     params: courseIds,
+    shape: pickQuizzes,
   }),
   defineTool({
     name: ToolName.GetQuizAttempts,

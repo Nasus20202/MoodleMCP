@@ -59,6 +59,17 @@ function describePage(page: unknown): unknown {
   };
 }
 
+/**
+ * Lists of picture files (`introfiles`) can be longer than the items they belong to; the count says whether
+ * there are any, and the pictures themselves are in the text of the item.
+ */
+function withoutIntroFiles(item: unknown): unknown {
+  if (typeof item !== 'object' || item === null) return item;
+  if (!('introfiles' in item)) return item;
+  const { introfiles, ...rest } = item as Record<string, unknown>;
+  return { ...rest, intro_files: Array.isArray(introfiles) ? introfiles.length : 0 };
+}
+
 export const listActivitiesTool = defineCustomTool({
   name: ToolName.ListActivities,
   description:
@@ -77,8 +88,9 @@ export const listActivitiesTool = defineCustomTool({
     const kind: ActivityKind = KINDS[type];
     const result = await client.call<Record<string, unknown>>(kind.fn, { 'courseids[0]': course_id });
     const list = result[kind.key];
-    const shaped =
-      type === 'page' && Array.isArray(list) ? { ...result, [kind.key]: list.map(describePage) } : result;
+    // Resources keep their file lists: the `fileurl` in them is what read_file needs.
+    const reduce = type === 'page' ? describePage : type === 'resource' ? undefined : withoutIntroFiles;
+    const shaped = reduce && Array.isArray(list) ? { ...result, [kind.key]: list.map(reduce) } : result;
     return renderResult(client, shaped);
   },
 });
