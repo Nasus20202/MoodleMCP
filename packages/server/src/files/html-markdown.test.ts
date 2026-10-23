@@ -41,6 +41,22 @@ describe('htmlToMarkdown', () => {
   });
 
   it('decodes entities and survives broken markup', () => {
-    expect(htmlToMarkdown('a &lt; b &amp; &#322;<p>unclosed <b>bold')).toBe('a < b & ł\n\nunclosed **bold');
+    expect(htmlToMarkdown('a &lt; b &amp; &#322;<p>unclosed <b>bold')).toBe('a < b & ł\n\nunclosed bold');
+  });
+
+  it('drops empty headings and empty emphasis, which editors leave as padding', () => {
+    expect(htmlToMarkdown('<h4> <br></h4><h4><strong> </strong></h4><p>Text<b></b></p>')).toBe('Text');
+  });
+
+  it('keeps the spaces around a bold phrase outside its markers and on one line', () => {
+    expect(htmlToMarkdown('<p>Revise <strong>conjunctions <br>and linkers </strong>here</p>')).toBe(
+      'Revise **conjunctions and linkers** here',
+    );
+  });
+
+  it('ignores a closing tag that does not match what is open', () => {
+    expect(htmlToMarkdown('<p><b>one <a href="https://x.test">two</b> three</a></p>')).toBe(
+      'one [two three](https://x.test)',
+    );
   });
 });

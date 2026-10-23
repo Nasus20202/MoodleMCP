@@ -213,7 +213,17 @@ describe('list_activities', () => {
 
   it('describes pages instead of returning their bodies', async () => {
     const { app } = setup(() => ({
-      pages: [{ id: 1, coursemodule: 8, name: 'P', content: '<p>abc</p>', contentfiles: [] }],
+      pages: [
+        {
+          id: 1,
+          coursemodule: 8,
+          name: 'P',
+          content: '<p>abc</p>',
+          contentfiles: [{ fileurl: 'a' }, { fileurl: 'b' }],
+          displayoptions: 'a:3:{}',
+          enableaitools: null,
+        },
+      ],
     }));
     const { body } = await callTool(app, ToolName.ListActivities, { course_id: 3, type: 'page' });
     const result = JSON.parse(body.result?.content?.[0]?.text ?? '') as { pages: Record<string, unknown>[] };
@@ -221,7 +231,7 @@ describe('list_activities', () => {
       id: 1,
       coursemodule: 8,
       name: 'P',
-      contentfiles: [],
+      content_files: 2,
       content_chars: 10,
     });
   });

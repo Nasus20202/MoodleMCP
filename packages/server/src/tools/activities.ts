@@ -37,11 +37,26 @@ const courseId = z
   .positive()
   .describe('Moodle course id: the `id` of a course from list_courses or search_courses');
 
-/** A page in a list is described, not shown: its body can be hundreds of kilobytes. Read it with get_page. */
-function withoutBody(page: unknown): unknown {
+/**
+ * A page in a list is described, not shown: its body and its file list (every picture in it) can run to
+ * hundreds of kilobytes for a course. Read the page with get_page.
+ */
+function describePage(page: unknown): unknown {
   if (typeof page !== 'object' || page === null) return page;
-  const { content, ...rest } = page as Record<string, unknown>;
-  return { ...rest, content_chars: typeof content === 'string' ? content.length : 0 };
+  const { id, coursemodule, course, name, intro, timemodified, section, visible, content, contentfiles } =
+    page as Record<string, unknown>;
+  return {
+    id,
+    coursemodule,
+    course,
+    name,
+    intro,
+    section,
+    visible,
+    timemodified,
+    content_chars: typeof content === 'string' ? content.length : 0,
+    content_files: Array.isArray(contentfiles) ? contentfiles.length : 0,
+  };
 }
 
 export const listActivitiesTool = defineCustomTool({
@@ -63,7 +78,7 @@ export const listActivitiesTool = defineCustomTool({
     const result = await client.call<Record<string, unknown>>(kind.fn, { 'courseids[0]': course_id });
     const list = result[kind.key];
     const shaped =
-      type === 'page' && Array.isArray(list) ? { ...result, [kind.key]: list.map(withoutBody) } : result;
+      type === 'page' && Array.isArray(list) ? { ...result, [kind.key]: list.map(describePage) } : result;
     return renderResult(client, shaped);
   },
 });

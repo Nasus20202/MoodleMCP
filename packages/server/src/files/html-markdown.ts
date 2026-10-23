@@ -88,6 +88,27 @@ export function htmlToMarkdown(html: string): string {
     buffers[buffers.length - 1] += text;
   };
   const block = () => write('\n\n');
+  // Emphasis and headings are written once their text is known, so empty ones can be dropped and the
+  // spaces around a bold phrase kept outside its markers. A close that does not match the innermost open
+  // one (broken markup) is ignored.
+  const frames: { kind: string; depth: number }[] = [];
+  const openFrame = (kind: string) => {
+    frames.push({ kind, depth: buffers.length });
+    buffers.push('');
+  };
+  const closeFrame = (kind: string): string | null => {
+    const frame = frames[frames.length - 1];
+    if (frame?.kind !== kind || frame.depth !== buffers.length - 1) return null;
+    frames.pop();
+    return buffers.pop() ?? '';
+  };
+  const closeMark = (kind: string, marker: string) => {
+    const text = closeFrame(kind)?.replace(/\s*\n\s*/g, ' ');
+    if (text === undefined || text === null) return;
+    const inner = text.trim();
+    if (inner === '') write(text === '' ? '' : ' ');
+    else write(`${/^\s/.test(text) ? ' ' : ''}${marker}${inner}${marker}${/\s$/.test(text) ? ' ' : ''}`);
+  };
   const line = () => write('\n');
 
   for (const match of html.matchAll(TOKEN)) {
@@ -158,11 +179,11 @@ export function htmlToMarkdown(html: string): string {
           break;
         case 'strong':
         case 'b':
-          write('**');
+          openFrame('strong');
           break;
         case 'em':
         case 'i':
-          write('*');
+          openFrame('em');
           break;
         case 'code':
           if (!pre) write('`');
@@ -198,10 +219,8 @@ export function htmlToMarkdown(html: string): string {
           buffers.push('');
           break;
         default:
-          if (/^h[1-6]$/.test(name)) {
-            block();
-            write(`${'#'.repeat(Number(name[1]))} `);
-          } else if (BLOCKS.has(name)) block();
+          if (/^h[1-6]$/.test(name)) openFrame(name);
+          else if (BLOCKS.has(name)) block();
       }
       continue;
     }
@@ -215,11 +234,11 @@ export function htmlToMarkdown(html: string): string {
       }
       case 'strong':
       case 'b':
-        write('**');
+        closeMark('strong', '**');
         break;
       case 'em':
       case 'i':
-        write('*');
+        closeMark('em', '*');
         break;
       case 'code':
         if (!pre) write('`');
@@ -268,7 +287,15 @@ export function htmlToMarkdown(html: string): string {
         break;
       }
       default:
-        if (/^h[1-6]$/.test(name) || BLOCKS.has(name) || name === 'p') block();
+        if (/^h[1-6]$/.test(name)) {
+          const text = closeFrame(name)?.replace(/\s+/g, ' ').trim();
+          // An empty heading is editor padding, not content.
+          if (text) {
+            block();
+            write(`${'#'.repeat(Number(name[1]))} ${text}`);
+          }
+          block();
+        } else if (BLOCKS.has(name) || name === 'p') block();
     }
   }
   return tidyBlocks(buffers.join(''));
