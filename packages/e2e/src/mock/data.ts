@@ -119,6 +119,19 @@ export const FILES: Record<string, MockFile> = {
     body: tinyDocx('Syllabus', 'Week 1: sorting'),
     type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   },
+  '/webservice/pluginfile.php/317/mod_resource/content/1/schedule.docx': {
+    course: COURSE_ALG,
+    body: zipSync({
+      'word/document.xml': strToU8(
+        '<w:document><w:body>' +
+          '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Schedule</w:t></w:r></w:p>' +
+          '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Week</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Topic</w:t></w:r></w:p></w:tc></w:tr>' +
+          '<w:tr><w:tc><w:p><w:r><w:t>1</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Sorting</w:t></w:r></w:p></w:tc></w:tr></w:tbl>' +
+          '</w:body></w:document>',
+      ),
+    }),
+    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  },
   '/webservice/pluginfile.php/304/mod_resource/content/1/diagram.png': {
     course: COURSE_ALG,
     body: PNG_BYTES,

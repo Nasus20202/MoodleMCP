@@ -51,12 +51,12 @@ as `entry` reads that file like any other (archives inside archives are not open
 and its name do not give is identified from its content (a few magic numbers, or valid UTF-8 text). Files up to 20 MB, paged with
 `offset` and `next_offset`. The URL must be on the Moodle site; redirects are not followed. Its `mode` picks how a file is read:
 
-| Mode       | What it does                                                                                                                                                        |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `auto`     | default: `markdown` for PDF, DOCX and XLSX when the AI binding is there; `extract` for everything else, HTML included (the Worker's own HTML-to-Markdown converter) |
-| `markdown` | Workers AI [`toMarkdown`][tomarkdown]: no Worker CPU, keeps headings and tables; an image gets a description                                                        |
-| `extract`  | the Worker's own parsers; PDFs are read only as far as each call goes (at most 20 pages) and take a `page`                                                          |
-| `resource` | the unmodified file: an image, audio or embedded resource block by type                                                                                             |
+| Mode       | What it does                                                                                                                                                                                                                                   |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auto`     | default: `markdown` for PDF, DOCX and XLSX when the AI binding is there; `extract` for everything else, HTML included (the Worker's own HTML-to-Markdown converter)                                                                            |
+| `markdown` | Workers AI [`toMarkdown`][tomarkdown]: no Worker CPU, keeps headings and tables; an image gets a description                                                                                                                                   |
+| `extract`  | the Worker's own parsers; PDFs are read only as far as each call goes (at most 20 pages) and take a `page`. Word keeps headings, lists, bold and tables, Excel becomes one Markdown table per sheet with dates as dates, HTML becomes Markdown |
+| `resource` | the unmodified file: an image, audio or embedded resource block by type                                                                                                                                                                        |
 
 If a conversion fails (or the daily Workers AI allowance runs out), `read_file` falls back to `extract` and says so.
 Images are only described when `markdown` is asked for, because a description is a summary and uses the allowance;

@@ -1,3 +1,4 @@
+import { cellText, markdownTable } from './table.ts';
 import { decodeEntities } from './text.ts';
 
 /** Elements whose content is never text for a reader. */
@@ -57,17 +58,6 @@ const tidyBlocks = (text: string) =>
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
-
-/** A cell's text on one line, safe inside a pipe table. */
-const cell = (text: string) => text.replace(/\s+/g, ' ').replace(/\|/g, '\\|').trim();
-
-function renderTable(rows: string[][]): string {
-  const width = Math.max(0, ...rows.map((r) => r.length));
-  if (width === 0) return '';
-  const pad = (r: string[]) => `| ${Array.from({ length: width }, (_, i) => r[i] ?? '').join(' | ')} |`;
-  const [head = [], ...body] = rows;
-  return [pad(head), `|${' --- |'.repeat(width)}`, ...body.map(pad)].join('\n');
-}
 
 /**
  * Markdown from an HTML fragment or page, without a DOM so it runs anywhere: headings, emphasis, links,
@@ -274,7 +264,7 @@ export function htmlToMarkdown(html: string): string {
         break;
       case 'td':
       case 'th': {
-        const text = cell(buffers.pop() ?? '');
+        const text = cellText(buffers.pop() ?? '');
         tables[tables.length - 1]?.row.push(text);
         break;
       }
@@ -288,7 +278,7 @@ export function htmlToMarkdown(html: string): string {
         const table = tables.pop();
         buffers.pop();
         block();
-        if (table) write(renderTable(table.rows));
+        if (table) write(markdownTable(table.rows));
         block();
         break;
       }

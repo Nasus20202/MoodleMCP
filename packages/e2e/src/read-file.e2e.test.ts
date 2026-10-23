@@ -65,6 +65,11 @@ describe('read_file against a mock Moodle file server', () => {
     expect(json().note).toContain('past the end');
   });
 
+  it('keeps the headings and tables of a Word document', async () => {
+    const { json } = await read(fileUrl('schedule.docx', 317));
+    expect(json().text).toBe('# Schedule\n\n| Week | Topic |\n| --- | --- |\n| 1 | Sorting |');
+  });
+
   it('extracts paragraphs from a Word document', async () => {
     const { json } = await read(fileUrl('syllabus.docx', 303));
     expect(json().text).toBe('Syllabus\nWeek 1: sorting');
