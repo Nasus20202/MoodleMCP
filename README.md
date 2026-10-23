@@ -81,9 +81,8 @@ are exactly as visible as in the Moodle app for that user: Moodle decides what t
 the web service request itself, like any other call, in its own logs.
 
 **What a tool returns.** Most tools relay Moodle's JSON after a shared cleanup: fields that say nothing are dropped
-(`null`, empty strings and objects, empty `warnings`, text-format flags, people's picture links, AI-tool flags, icons;
-an empty list, zero and false
-stay), scripts and styles are removed from HTML, multi-language text is resolved to the user's language, and pictures
+(`null`, empty strings and objects, empty `warnings`, text-format flags, people's picture links, AI-tool flags,
+icons; an empty list, zero and false stay), scripts and styles are removed from HTML, multi-language text is resolved to the user's language, and pictures
 pasted into HTML come back as image blocks. A few tools shape their answer for a reader instead:
 `get_course_contents` is a Markdown outline (section headings, one line per activity with its `cmid` and `instance`,
 files and links under it, labels with their text), `get_page` and `read_file` return Markdown, and these keep
