@@ -54,7 +54,7 @@ describe('read_file', () => {
     const html = '<p>See</p><img alt="fig" src="data:image/png;base64,iVBORw==">';
     const { body } = await readFile(serve(html, 'text/html'));
     const content = body.result?.content ?? [];
-    expect(JSON.parse(content[0]?.text ?? '')).toMatchObject({ readable: true, text: 'See' });
+    expect(JSON.parse(content[0]?.text ?? '')).toMatchObject({ readable: true, text: 'See\n\n[image: fig]' });
     expect(content[1]).toEqual({ type: 'image', data: 'iVBORw==', mimeType: 'image/png' });
     expect(content[2]?.text).toContain('1 image(s) embedded');
   });

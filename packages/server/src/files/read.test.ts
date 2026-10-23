@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 import type { DownloadedFile } from '../moodle/client.ts';
 import { tinyPdf } from '../test-utils.ts';
 import { classify, pageText, readFile, unsupportedReason } from './read.ts';
-import { htmlToText } from './text.ts';
 
 const file = (filename: string, bytes: Uint8Array | string, mimeType = ''): DownloadedFile => ({
   filename,
@@ -93,7 +92,7 @@ describe('readFile', () => {
     const result = await read(
       file('index.html', '<h1>Title</h1><p>One<br>two</p><script>x()</script>', 'text/html'),
     );
-    expect(result).toMatchObject({ kind: 'text', format: 'html', text: 'Title\nOne\ntwo' });
+    expect(result).toMatchObject({ kind: 'text', format: 'html', text: '# Title\n\nOne\ntwo' });
   });
 
   it('reads plain text and code', async () => {
@@ -179,11 +178,5 @@ describe('pageText', () => {
       totalChars: 10,
       nextOffset: null,
     });
-  });
-});
-
-describe('htmlToText', () => {
-  it('decodes entities and keeps list structure', () => {
-    expect(htmlToText('<ul><li>a &lt; b</li><li>&#322;&#x142;&nbsp;x</li></ul>')).toBe('- a < b\n- łł x');
   });
 });
