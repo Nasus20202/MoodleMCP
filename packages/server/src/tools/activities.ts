@@ -102,10 +102,9 @@ export const getPageTool = defineCustomTool({
   description:
     "Read one Page activity's content. `cmid` is the `coursemodule` of a page from list_activities (type " +
     'page), the `id` of a page module in get_course_contents, or the `id` in a Moodle link ' +
-    '(`.../mod/page/view.php?id=123`). `format`: auto (default) is Markdown, through Workers AI when ' +
-    'available, otherwise our own converter; markdown asks for Workers AI (falling back to our converter); ' +
-    'extract is our own converter, which keeps headings, lists, links and tables; raw is the HTML as Moodle ' +
-    'stores it. Pictures pasted into the page are attached as images after the text. A long page comes back ' +
+    '(`.../mod/page/view.php?id=123`). `format`: auto (default) and extract are Markdown from our own ' +
+    'converter, which keeps headings, lists, links and tables; markdown asks Workers AI instead (falling ' +
+    'back to our converter), which can leave stray markers; raw is the HTML as Moodle stores it. Pictures pasted into the page are attached as images after the text. A long page comes back ' +
     'in parts: if `next_offset` is not null, call again with `offset` set to it. Links to files in the page ' +
     'can be given to read_file.',
   input: z.object({
@@ -179,10 +178,10 @@ export const getPageTool = defineCustomTool({
       ];
     }
 
-    // The converter on Cloudflare's side would lose where each pasted picture sat, ours keeps a mark for it.
     const pictures = embeddedImages(html);
     const hasPictures = pictures.images.length > 0 || pictures.skipped > 0;
-    const mode = format === 'auto' ? (hasPictures ? ReadMode.Extract : ReadMode.Auto) : format;
+    // auto is our own converter: cleaner than Workers AI on editor markup, and it marks where pictures sat.
+    const mode = format === 'markdown' ? ReadMode.Markdown : ReadMode.Extract;
     // Pictures are attached from the original HTML below; the converter gets it without their bytes.
     const content = await readHtml(context, stripHtmlBloat(html), name, { mode, offset, max_chars });
     return [...header, ...content, ...(offset === 0 && hasPictures ? embeddedImageBlocks(html) : [])];

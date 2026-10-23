@@ -73,20 +73,19 @@ describe('get_page', () => {
     });
   });
 
-  it('uses Workers AI for auto and markdown, and says so', async () => {
+  it('uses Workers AI only when markdown is asked for, and says so', async () => {
     const markdown = fakeMarkdown(() => '# From AI');
-    for (const format of ['auto', 'markdown']) {
-      const { json } = await getPage([PAGE], { format }, { markdown });
-      expect(json(1)).toMatchObject({ mode: 'markdown', text: '# From AI' });
-    }
+    const { json } = await getPage([PAGE], { format: 'markdown' }, { markdown });
+    expect(json(1)).toMatchObject({ mode: 'markdown', text: '# From AI' });
     expect(markdown.calls[0]).toMatchObject({ type: 'text/html' });
     expect(markdown.calls[0]?.text).toContain('Read');
   });
 
-  it('extract never calls Workers AI', async () => {
+  it.each(['auto', 'extract'])('%s uses our own converter even when Workers AI is there', async (format) => {
     const markdown = fakeMarkdown();
-    const { json } = await getPage([PAGE], { format: 'extract' }, { markdown });
+    const { json } = await getPage([PAGE], { format }, { markdown });
     expect(json(1)).toMatchObject({ mode: 'extract' });
+    expect(json(1).text).toContain('## Rules');
     expect(markdown.calls).toHaveLength(0);
   });
 
@@ -122,7 +121,6 @@ describe('get_page', () => {
     it('are attached once, and our converter marks where they sat', async () => {
       const markdown = fakeMarkdown();
       const { content, json } = await getPage([withPicture], {}, { markdown });
-      // auto would normally ask Workers AI, which would lose the place of the picture.
       expect(markdown.calls).toHaveLength(0);
       expect(json(1)).toMatchObject({ mode: 'extract', text: 'See\n\n[image: Fig]' });
       expect(content.map((b) => b.type)).toEqual(['text', 'text', 'image', 'text']);

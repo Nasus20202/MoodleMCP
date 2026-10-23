@@ -39,7 +39,7 @@ const input = z.object({
     .enum([ReadMode.Auto, ReadMode.Markdown, ReadMode.Extract, ReadMode.Resource])
     .default(ReadMode.Auto)
     .describe(
-      'auto (default): Markdown for PDF, Word, Excel and HTML when available, otherwise extracted text; ' +
+      'auto (default): Markdown for PDF, Word and Excel when available, otherwise extracted text (HTML becomes Markdown through our own converter); ' +
         'markdown: convert to Markdown (keeps headings and tables; for an image, a written description); ' +
         'extract: our own text extraction, PDFs page by page and images as images; ' +
         'resource: the unmodified file (for a ZIP with `entry`, that entry), any type, ignoring offset and max_chars: an image block for images, ' +

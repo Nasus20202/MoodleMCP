@@ -54,7 +54,7 @@ describe('pages and other activities against a mock Moodle', () => {
       const result = await alice().call('get_page', { cmid: IDS.cmidPage });
       expect(result.isError).toBeUndefined();
       expect(jsonAt(result, 0)).toMatchObject({ page: { cmid: IDS.cmidPage, name: 'Welcome page' } });
-      expect(jsonAt(result, 1)).toMatchObject({ text: 'Welcome to Algorithms.' });
+      expect(jsonAt(result, 1)).toMatchObject({ text: 'Welcome to **Algorithms**.' });
       expect(world.moodle.restCalls.map((r) => r.fn)).toEqual([
         'core_course_get_course_module',
         'mod_page_get_pages_by_courses',
@@ -62,9 +62,12 @@ describe('pages and other activities against a mock Moodle', () => {
       expect(world.moodle.restCalls.every((r) => r.token === ALICE.token)).toBe(true);
     });
 
-    it('converts through Workers AI by default and says so', async () => {
-      const result = await alice().call('get_page', { cmid: IDS.cmidPage });
-      expect(jsonAt(result, 1)).toMatchObject({ mode: 'markdown' });
+    it('converts with our own converter by default, and through Workers AI only when asked', async () => {
+      const auto = await alice().call('get_page', { cmid: IDS.cmidPage });
+      expect(jsonAt(auto, 1)).toMatchObject({ mode: 'extract' });
+      expect(world.ai.calls).toHaveLength(0);
+      const asked = await alice().call('get_page', { cmid: IDS.cmidPage, format: 'markdown' });
+      expect(jsonAt(asked, 1)).toMatchObject({ mode: 'markdown' });
       expect(world.ai.calls).toHaveLength(1);
       expect(world.ai.calls[0]).toMatchObject({ type: 'text/html' });
     });
