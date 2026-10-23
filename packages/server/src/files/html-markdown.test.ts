@@ -65,4 +65,16 @@ describe('htmlToMarkdown', () => {
       '**Revise these now**',
     );
   });
+
+  it('continues a bold or italic phrase that was closed and reopened right away', () => {
+    expect(
+      htmlToMarkdown('<p><strong>Do you think that</strong><strong>the aircraft</strong> fly?</p>'),
+    ).toBe('**Do you think thatthe aircraft** fly?');
+    expect(htmlToMarkdown('<p><em>a</em><em>b</em> and <b>c</b> <b>d</b></p>')).toBe('*ab* and **c** **d**');
+  });
+
+  it('does not merge bold with italic, or phrases separated by a space', () => {
+    expect(htmlToMarkdown('<p><b>a</b><i>b</i></p>')).toBe('**a***b*');
+    expect(htmlToMarkdown('<p><b>a</b> <b>b</b></p>')).toBe('**a** **b**');
+  });
 });

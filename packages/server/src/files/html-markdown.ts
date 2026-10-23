@@ -52,6 +52,10 @@ interface TableFrame {
   row: string[];
 }
 
+/** Whether `text` ends with `marker` as emphasis of its own: `**` but not the end of `***`, `*` but not of `**`. */
+const endsWithMark = (text: string, marker: string) =>
+  text.endsWith(marker) && text[text.length - marker.length - 1] !== '*';
+
 /** Trailing blanks dropped and runs of blank lines squeezed to one. */
 const tidyBlocks = (text: string) =>
   text
@@ -102,8 +106,16 @@ export function htmlToMarkdown(html: string): string {
       return;
     }
     const inner = text.trim();
-    if (inner === '') write(text === '' ? '' : ' ');
-    else write(`${/^\s/.test(text) ? ' ' : ''}${marker}${inner}${marker}${/\s$/.test(text) ? ' ' : ''}`);
+    if (inner === '') {
+      write(text === '' ? '' : ' ');
+      return;
+    }
+    const leading = /^\s/.test(text) ? ' ' : '';
+    // <b>a</b><b>b</b> is one bold phrase: continue the one just closed instead of writing `**a****b**`.
+    const open = buffers[buffers.length - 1] ?? '';
+    const continues = leading === '' && endsWithMark(open, marker);
+    if (continues) buffers[buffers.length - 1] = open.slice(0, -marker.length);
+    write(`${leading}${continues ? '' : marker}${inner}${marker}${/\s$/.test(text) ? ' ' : ''}`);
   };
   const line = () => write('\n');
 
