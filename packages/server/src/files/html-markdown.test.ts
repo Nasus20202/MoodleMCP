@@ -59,4 +59,10 @@ describe('htmlToMarkdown', () => {
       'one [two three](https://x.test)',
     );
   });
+
+  it('writes nested emphasis of the same kind once', () => {
+    expect(htmlToMarkdown('<p><strong>Revise <strong>these</strong> now</strong></p>')).toBe(
+      '**Revise these now**',
+    );
+  });
 });

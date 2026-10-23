@@ -103,8 +103,14 @@ export function htmlToMarkdown(html: string): string {
     return buffers.pop() ?? '';
   };
   const closeMark = (kind: string, marker: string) => {
+    // <b>a <b>b</b></b> is bold once: only the outermost one writes markers.
+    const nested = frames.slice(0, -1).some((f) => f.kind === kind);
     const text = closeFrame(kind)?.replace(/\s*\n\s*/g, ' ');
     if (text === undefined || text === null) return;
+    if (nested) {
+      write(text);
+      return;
+    }
     const inner = text.trim();
     if (inner === '') write(text === '' ? '' : ' ');
     else write(`${/^\s/.test(text) ? ' ' : ''}${marker}${inner}${marker}${/\s$/.test(text) ? ' ' : ''}`);
