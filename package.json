@@ -19,6 +19,7 @@
     "typecheck": "pnpm --recursive --if-present typecheck",
     "test": "vitest run",
     "test:browser": "pnpm --filter @moodle-mcp/e2e test:browser",
+    "test:clients": "pnpm --filter @moodle-mcp/e2e test:clients",
     "lint": "eslint . && prettier --check .",
     "format": "eslint --fix . && prettier --write .",
     "check": "pnpm lint && pnpm typecheck && pnpm test"

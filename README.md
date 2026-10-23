@@ -106,12 +106,14 @@ pnpm install
 pnpm dev            # Worker on :8787 + Vite on :5173; open :5173 (no Workers AI: read_file extracts)
 pnpm check          # ESLint, Prettier, typecheck, tests (including the end-to-end tests)
 pnpm test:browser   # Playwright tests of the setup and OAuth pages
+pnpm test:clients   # Claude Code, Codex and opencode against the Worker (needs those CLIs installed)
 pnpm format         # fix what can be fixed
 ```
 
 Code lives in `packages/`: `shared`, `server` (the Worker), `web` (the setup page) and `e2e`. The end-to-end tests run
 the bundled Worker in workerd against a mock Moodle, so they need no network. The browser tests need Chromium: run
-`pnpm --filter @moodle-mcp/e2e exec playwright install chromium` once. See [AGENTS.md](AGENTS.md) for conventions and
+`pnpm --filter @moodle-mcp/e2e exec playwright install chromium` once. The client tests run the real CLIs, which
+need no login: a scripted model stands in for the provider (`packages/e2e/src/clients`). See [AGENTS.md](AGENTS.md) for conventions and
 how to add a tool.
 
 ## Deploy

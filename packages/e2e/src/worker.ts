@@ -28,6 +28,8 @@ export interface RunningWorker {
   /** `http://host:port` of the Worker, as callers see it. */
   origin: string;
   fetch(path: string, init?: RequestInit): Promise<Response>;
+  /** Like `fetch`, for a request the Worker should see as sent to `publicOrigin`: a proxy in front of it. */
+  fetchVia(publicOrigin: string, path: string, init?: RequestInit): Promise<Response>;
   /** Every JSON log line the Worker has written so far. */
   logs(): Promise<LogLine[]>;
   /** Forgets the log lines so far (after waiting for in-flight ones), so a test sees only its own. */
@@ -90,6 +92,8 @@ export async function startWorker(options: WorkerOptions): Promise<RunningWorker
   return {
     origin,
     fetch: (path, init) => dispatch(`${origin}${path}`, { redirect: 'manual', ...init }),
+    fetchVia: (publicOrigin, path, init) =>
+      dispatch(`${publicOrigin}${path}`, { redirect: 'manual', ...init }),
     async logs() {
       await settle();
       return raw.flatMap((line) => {

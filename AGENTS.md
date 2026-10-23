@@ -17,7 +17,12 @@ pnpm workspaces, TypeScript throughout (Node and pnpm versions are pinned in `.n
 - `packages/e2e`: end-to-end tests. They run the bundled Worker in workerd (Miniflare) with the outbound network replaced
   by a mock Moodle (`src/mock/`); `src/worker.ts` boots it, `src/world.ts` is the per-suite setup. Browser tests
   (Playwright, `src/browser/*.spec.ts`, run with `pnpm test:browser`) drive the built setup page and the OAuth
-  consent page against the same stack.
+  consent page against the same stack. Client tests (`src/clients/*.client.test.ts`, `pnpm test:clients`, a CI job per
+  CLI) run the real Claude Code, Codex and opencode CLIs against the Worker: a scripted model (`fake-model.ts`, one
+  `Protocol` per model API) makes each call the tools, with the token configured or signed in via OAuth (the real consent page in Chromium; Claude Code's sign-in is driven
+  through its terminal UI by `claude-login.py`, which needs python3).
+  Rows are `drivers.ts` entries; they are skipped when the CLI is not installed unless `E2E_REQUIRE_CLIENTS` is set.
+  A new tool needs no change there; add a `CASES` row only to cover a new kind of result.
 - `wrangler.jsonc`: `/mcp`, `/api/*`, `/oauth/*` and `/.well-known/*` run the Worker first; everything else is an asset.
 
 ## Commands
@@ -25,6 +30,7 @@ pnpm workspaces, TypeScript throughout (Node and pnpm versions are pinned in `.n
 ```sh
 pnpm check     # ESLint + Prettier + typecheck + tests: run before finishing any change
 pnpm format    # eslint --fix and prettier --write
+pnpm test:clients  # real coding-agent CLIs against the Worker; not part of check
 pnpm types     # regenerate packages/server/worker-configuration.d.ts after editing wrangler.jsonc
                # (move .dev.vars away first: wrangler adds its secrets to the types, which CI does not have)
 pnpm run deploy  # not `pnpm deploy`, which is a different built-in command

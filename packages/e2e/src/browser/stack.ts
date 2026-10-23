@@ -77,6 +77,9 @@ export async function startStack(options: StackOptions): Promise<Stack> {
     env: { ALLOWED_MOODLE_HOSTS: '*', ...(options.oauth && { OAUTH_SECRET }) },
   });
 
+  // The Worker sees requests as sent to the stack, so the addresses it puts in OAuth metadata work for clients.
+  let publicUrl = '';
+
   const assetHeaders = parseHeaders(await readFile(join(options.webDir, '_headers'), 'utf8').catch(() => ''));
 
   const server: Server = createServer((req, res) => {
@@ -93,7 +96,7 @@ export async function startStack(options: StackOptions): Promise<Stack> {
             typeof v === 'string' && !['host', 'connection', 'content-length'].includes(k) ? [[k, v]] : [],
           ),
         );
-        const reply = await worker.fetch(`${url.pathname}${url.search}`, {
+        const reply = await worker.fetchVia(publicUrl, `${url.pathname}${url.search}`, {
           method: req.method ?? 'GET',
           headers,
           ...(body && { body: new Uint8Array(body) }),
@@ -117,14 +120,17 @@ export async function startStack(options: StackOptions): Promise<Stack> {
       });
       res.end(content);
     })().catch((error: unknown) => {
-      res.writeHead(500).end(String(error));
+      // A client that hangs up mid-response (a CLI that is done) leaves nothing to answer.
+      if (res.headersSent) res.destroy();
+      else res.writeHead(500).end(String(error));
     });
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address() as AddressInfo;
+  publicUrl = `http://127.0.0.1:${port}`;
 
   return {
-    url: `http://127.0.0.1:${port}`,
+    url: publicUrl,
     worker,
     network,
     moodle,

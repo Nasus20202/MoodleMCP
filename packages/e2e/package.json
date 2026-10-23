@@ -6,7 +6,8 @@
   "scripts": {
     "test": "vitest run",
     "test:browser": "playwright test",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "test:clients": "vitest run --config vitest.clients.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",

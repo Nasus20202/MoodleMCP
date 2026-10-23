@@ -53,12 +53,14 @@ export const ENROLMENTS: Record<number, readonly number[]> = {
 };
 
 const NOTES_PATH = '/webservice/pluginfile.php/301/mod_resource/content/1/notes.txt';
+const PIXEL_PATH = '/webservice/pluginfile.php/316/mod_resource/content/1/pixel.png';
 const SLIDES_PATH = '/webservice/pluginfile.php/302/mod_resource/content/1/slides.pdf';
 export const FILE_URLS = {
   notes: `${SITE_URL}${NOTES_PATH}`,
   /** The form Moodle puts in HTML content: the Worker must rewrite it to the web service file server. */
   notesPlain: `${SITE_URL}/pluginfile.php/301/mod_resource/content/1/notes.txt`,
   slides: `${SITE_URL}${SLIDES_PATH}`,
+  pixel: `${SITE_URL}${PIXEL_PATH}`,
 } as const;
 
 /** A one-page PDF with a text layer, written by hand. */
@@ -84,6 +86,12 @@ export function tinyDocx(...paragraphs: string[]): Uint8Array {
 }
 
 export const PNG_BYTES = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+
+/** A complete 1x1 PNG, for clients that decode the images they are given (the signature alone is not an image). */
+export const PIXEL_PNG = Uint8Array.from(
+  atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='),
+  (char) => char.charCodeAt(0),
+);
 
 /** A file the mock file server holds. */
 export interface MockFile {
@@ -139,6 +147,7 @@ export const FILES: Record<string, MockFile> = {
     body: 'fun main() = Unit',
     type: 'application/octet-stream',
   },
+  [PIXEL_PATH]: { course: COURSE_ALG, body: PIXEL_PNG, type: 'image/png' },
   '/webservice/pluginfile.php/312/mod_resource/content/1/picture': {
     course: COURSE_ALG,
     body: PNG_BYTES,
