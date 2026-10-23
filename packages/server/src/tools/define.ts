@@ -62,21 +62,28 @@ export function defineTool<Schema extends z.ZodObject>(spec: ToolSpec<Schema>): 
     input: spec.input,
     async run({ client }, input) {
       const result = await client.call(spec.fn, await spec.params(input, client));
-      const shaped = spec.shape ? spec.shape(result) : result;
-      const { value, images, skipped } = extractEmbeddedImages(shaped);
-      const text = await tidyToJson(value, () => client.lang());
-      if (images.length === 0 && skipped === 0) return [{ type: 'text', text }];
-      return [
-        { type: 'text', text },
-        ...images.map((image): ToolContent => ({
-          type: 'image',
-          data: image.base64,
-          mimeType: image.mimeType,
-        })),
-        ...jsonContent({ note: imageNote(images.length, skipped) }),
-      ];
+      return renderResult(client, spec.shape ? spec.shape(result) : result);
     },
   });
+}
+
+/**
+ * Turns a Moodle result into content blocks: tidied JSON, then the pictures pasted into its HTML as image
+ * blocks, each marked `data-image="N"` where it sat, and a line saying so.
+ */
+export async function renderResult(client: MoodleClient, shaped: unknown): Promise<ToolContent[]> {
+  const { value, images, skipped } = extractEmbeddedImages(shaped);
+  const text = await tidyToJson(value, () => client.lang());
+  if (images.length === 0 && skipped === 0) return [{ type: 'text', text }];
+  return [
+    { type: 'text', text },
+    ...images.map((image): ToolContent => ({
+      type: 'image',
+      data: image.base64,
+      mimeType: image.mimeType,
+    })),
+    ...jsonContent({ note: imageNote(images.length, skipped) }),
+  ];
 }
 
 interface CustomToolSpec<Schema extends z.ZodObject> {

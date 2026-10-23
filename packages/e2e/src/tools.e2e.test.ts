@@ -4,6 +4,7 @@ import { McpClient, textOf } from './mcp.ts';
 import {
   ALICE,
   BOB,
+  CHOICE_RESULTS,
   COMPLETION,
   COURSE_ALG,
   COURSE_DATA,
@@ -11,8 +12,11 @@ import {
   COURSE_GRADES,
   COURSES,
   DISCUSSIONS,
+  FEEDBACK_ANALYSIS,
+  GLOSSARY_ENTRIES,
   GRADE_ITEMS,
   IDS,
+  LESSON_PAGES,
   NOTIFICATIONS,
   POSTS,
   QUIZ_ATTEMPTS,
@@ -84,28 +88,10 @@ const CASES: ToolCase[] = [
     },
   },
   {
-    tool: 'list_resources',
-    args: { course_id: COURSE_ALG },
+    tool: 'list_activities',
+    args: { course_id: COURSE_ALG, type: 'resource' },
     fn: 'mod_resource_get_resources_by_courses',
     expected: { resources: alg.resources, warnings: [] },
-  },
-  {
-    tool: 'list_pages',
-    args: { course_id: COURSE_ALG },
-    fn: 'mod_page_get_pages_by_courses',
-    expected: { pages: alg.pages, warnings: [] },
-  },
-  {
-    tool: 'list_urls',
-    args: { course_id: COURSE_ALG },
-    fn: 'mod_url_get_urls_by_courses',
-    expected: { urls: alg.urls, warnings: [] },
-  },
-  {
-    tool: 'list_labels',
-    args: { course_id: COURSE_ALG },
-    fn: 'mod_label_get_labels_by_courses',
-    expected: { labels: alg.labels, warnings: [] },
   },
   {
     tool: 'list_wikis',
@@ -118,6 +104,30 @@ const CASES: ToolCase[] = [
     args: { wiki_id: IDS.wiki },
     fn: 'mod_wiki_get_subwiki_pages',
     expected: WIKI_PAGES,
+  },
+  {
+    tool: 'get_glossary_entries',
+    args: { glossary_id: IDS.glossary },
+    fn: 'mod_glossary_get_entries_by_letter',
+    expected: GLOSSARY_ENTRIES,
+  },
+  {
+    tool: 'get_lesson_pages',
+    args: { lesson_id: IDS.lesson },
+    fn: 'mod_lesson_get_pages',
+    expected: LESSON_PAGES,
+  },
+  {
+    tool: 'get_choice_results',
+    args: { choice_id: IDS.choice },
+    fn: 'mod_choice_get_choice_results',
+    expected: CHOICE_RESULTS,
+  },
+  {
+    tool: 'get_feedback_analysis',
+    args: { feedback_id: IDS.feedback },
+    fn: 'mod_feedback_get_analysis',
+    expected: FEEDBACK_ANALYSIS,
   },
   {
     tool: 'list_assignments',
@@ -216,7 +226,14 @@ const CASES: ToolCase[] = [
 ];
 
 /** The tests are only as good as their coverage: every tool the server exposes needs a row above. */
-const TOOLS_COVERED_ELSEWHERE = ['read_file'];
+const TOOLS_COVERED_ELSEWHERE = [
+  'read_file',
+  'get_page',
+  'get_course_participants',
+  'get_user_profile',
+  'list_conversations',
+  'get_conversation_messages',
+];
 
 describe('MCP tools against a mock Moodle', () => {
   const world = useWorld();

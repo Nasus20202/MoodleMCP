@@ -47,6 +47,11 @@ pnpm run deploy  # not `pnpm deploy`, which is a different built-in command
   (`http/client-info.ts`). Log outcomes and sizes (`function`, `mime`, `format`, `bytes`, `ms`, `ok`, an error code),
   never full URLs, file names, file contents or parameter values. The one exception is `site`, the validated
   Moodle site address (https, no credentials or query), which names the institution and not the user.
+- **Personal data is read, never touched.** `get_course_participants`, `get_user_profile`, `list_conversations` and
+  `get_conversation_messages` only use functions with no side effects: no `mark_*`, `send_*`, `view_*` or anything that
+  changes read state (the security e2e test fails on those). Trim results to the fields the tool documents (no picture
+  links, preferences or activity times), always send a limit when Moodle reads 0 as "all", and keep names, emails and
+  message text out of logs and errors. Tests assert this (`people.e2e.test.ts`).
 - **Site policy is a security boundary.** `X-Moodle-URL` is caller-controlled; `SitePolicy` keeps the Worker from becoming
   an open proxy. Apply it to any new code path that contacts a caller-supplied URL (as `/api/exchange` and the OAuth
   consent page do).
@@ -71,6 +76,11 @@ pnpm run deploy  # not `pnpm deploy`, which is a different built-in command
 4. Add a row to the `it.each` table in `app.test.ts`. The web page and `/api/tools` pick the tool up automatically.
 5. Teach the mock Moodle the function (`packages/e2e/src/mock/moodle.ts`, with fixtures in `data.ts`) and add a row to
    `CASES` in `packages/e2e/src/tools.e2e.test.ts`; that suite fails if a tool has no row.
+
+A tool that needs several Moodle calls or returns more than one block (like `get_page`, which looks up the module and
+then the course's pages) uses `defineCustomTool`, is listed in `TOOLS_COVERED_ELSEWHERE` in `tools.e2e.test.ts`, and has
+its own e2e file (`page.e2e.test.ts`). A new kind of activity for `list_activities` is one entry in `KINDS`
+(`tools/activities.ts`) plus a fixture and a mock handler.
 
 Write the description for the model: say what the tool returns, when to prefer a sibling tool, and which tool an id
 argument comes from (`describe()` on the argument repeats it). A tool that is not a plain relay of one Moodle function

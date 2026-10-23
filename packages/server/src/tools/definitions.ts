@@ -1,8 +1,15 @@
 import * as z from 'zod/v4';
 
 import { MoodleFunction } from '../moodle/functions.ts';
+import { getPageTool, listActivitiesTool } from './activities.ts';
 import { defineTool } from './define.ts';
 import { ToolName } from './names.ts';
+import {
+  getConversationMessagesTool,
+  getCourseParticipantsTool,
+  getUserProfileTool,
+  listConversationsTool,
+} from './people.ts';
 import { readFileTool } from './read-file.ts';
 import { pickSiteInfo } from './tidy.ts';
 
@@ -55,7 +62,7 @@ export const TOOLS = [
       '`fileurl`; pass that value to read_file to read the document. Each activity has an `id` (cmid), a ' +
       '`modname` (type) and an `instance` id; the instance id is what list_assignments, list_forums, ' +
       'list_quizzes, etc. call `assign_id`/`forum_id`/`quiz_id`. This is the best first look at a course, ' +
-      'but the output is large: prefer list_resources, list_assignments or list_pages when you only need one kind.',
+      'but the output is large: prefer list_activities, list_assignments or list_quizzes when you only need one kind.',
     input: courseInput,
     fn: MoodleFunction.CourseContents,
     params: ({ course_id }) => ({ courseid: course_id }),
@@ -75,44 +82,57 @@ export const TOOLS = [
     params: ({ cmid }) => ({ cmid }),
   }),
   readFileTool,
+  listActivitiesTool,
+  getPageTool,
   defineTool({
-    name: ToolName.ListResources,
+    name: ToolName.GetGlossaryEntries,
     description:
-      "List a course's file resources (slides, notes, documents) with each file's name, size, type and " +
-      '`fileurl`. A lighter alternative to get_course_contents when you only want the files. Pass a ' +
-      '`fileurl` to read_file to read it. Files inside folders are only shown by get_course_contents. ' +
+      'Read the entries (term, definition, author) of a glossary, alphabetically. `glossary_id` is the `id` of ' +
+      'a glossary from list_activities (type glossary). Entries awaiting approval are not shown. A long ' +
+      'glossary comes back in parts: raise `offset` by `limit` to read on. ' +
       TIMES,
-    input: courseInput,
-    fn: MoodleFunction.Resources,
-    params: courseIds,
+    input: z.object({
+      glossary_id: id('glossary id: the `id` of a glossary from list_activities (type glossary)'),
+      offset: z.number().int().min(0).default(0).describe('number of entries to skip'),
+      limit: z.number().int().min(1).max(100).default(50).describe('most entries to return (default 50)'),
+    }),
+    fn: MoodleFunction.GlossaryEntries,
+    params: ({ glossary_id, offset, limit }) => ({
+      id: glossary_id,
+      letter: 'ALL',
+      from: offset,
+      limit,
+    }),
   }),
   defineTool({
-    name: ToolName.ListPages,
+    name: ToolName.GetLessonPages,
     description:
-      "List a course's 'Page' activities including their full HTML content, which often holds the actual " +
-      'course material or instructions. Embedded files are linked by `fileurl` for read_file. Pictures pasted into ' +
-      'a page are attached as images after the text, each marked `data-image="N"` where it sat.',
-    input: courseInput,
-    fn: MoodleFunction.Pages,
-    params: courseIds,
+      'Read the pages of a lesson (their titles and content) in the order the teacher set. `lesson_id` is the ' +
+      '`id` of a lesson from list_activities (type lesson). This only reads; it does not start an attempt.',
+    input: z.object({ lesson_id: id('lesson id: the `id` of a lesson from list_activities (type lesson)') }),
+    fn: MoodleFunction.LessonPages,
+    params: ({ lesson_id }) => ({ lessonid: lesson_id }),
   }),
   defineTool({
-    name: ToolName.ListUrls,
+    name: ToolName.GetChoiceResults,
     description:
-      'List the external links (URL activities) a course points to, with their address and description. ' +
-      'You cannot open the links; give them to the user.',
-    input: courseInput,
-    fn: MoodleFunction.Urls,
-    params: courseIds,
+      'Show the results of a choice (poll): each option and how many chose it, and who when the teacher ' +
+      'made results public. `choice_id` is the `id` of a choice from list_activities (type choice).',
+    input: z.object({ choice_id: id('choice id: the `id` of a choice from list_activities (type choice)') }),
+    fn: MoodleFunction.ChoiceResults,
+    params: ({ choice_id }) => ({ choiceid: choice_id }),
   }),
   defineTool({
-    name: ToolName.ListLabels,
+    name: ToolName.GetFeedbackAnalysis,
     description:
-      "List a course's text labels: the headings, announcements and instructions placed between activities, " +
-      'as HTML. Useful because this text is part of the course material but is not an activity of its own.',
-    input: courseInput,
-    fn: MoodleFunction.Labels,
-    params: courseIds,
+      'Show the summarised answers to a feedback survey, when the teacher lets participants see them. ' +
+      '`feedback_id` is the `id` of a feedback from list_activities (type feedback). Fails if the analysis ' +
+      'is not available to students.',
+    input: z.object({
+      feedback_id: id('feedback id: the `id` of a feedback from list_activities (type feedback)'),
+    }),
+    fn: MoodleFunction.FeedbackAnalysis,
+    params: ({ feedback_id }) => ({ feedbackid: feedback_id }),
   }),
   defineTool({
     name: ToolName.ListWikis,
@@ -265,6 +285,10 @@ export const TOOLS = [
     fn: MoodleFunction.ForumPosts,
     params: ({ discussion_id }) => ({ discussionid: discussion_id, sortby: 'created', sortdirection: 'ASC' }),
   }),
+  getCourseParticipantsTool,
+  getUserProfileTool,
+  listConversationsTool,
+  getConversationMessagesTool,
   defineTool({
     name: ToolName.GetNotifications,
     description:

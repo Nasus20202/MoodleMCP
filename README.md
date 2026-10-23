@@ -32,16 +32,18 @@ clients.
 All tools are read-only. `GET /api/tools` lists them with their arguments, and each description tells the agent which
 tool to call next and where its ids come from.
 
-| Area      | Tools                                                                                                       |
-| --------- | ----------------------------------------------------------------------------------------------------------- |
-| Site      | `get_site_info`                                                                                             |
-| Courses   | `list_courses`, `search_courses`, `get_course_contents`, `get_course_module`                                |
-| Materials | `read_file`, `list_resources`, `list_pages`, `list_labels`, `list_urls`, `list_wikis`, `get_wiki_pages`     |
-| Work      | `list_assignments`, `get_submission_status`, `list_quizzes`, `get_quiz_attempts`, `get_quiz_attempt_review` |
-| Calendar  | `get_upcoming_events`, `get_course_events`, `get_course_completion`                                         |
-| Grades    | `get_grades`, `get_grades_overview`                                                                         |
-| Forums    | `list_forums`, `list_forum_discussions`, `get_forum_posts`                                                  |
-| Activity  | `get_notifications`                                                                                         |
+| Area      | Tools                                                                                                                                                                 |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Site      | `get_site_info`                                                                                                                                                       |
+| Courses   | `list_courses`, `search_courses`, `get_course_contents`, `get_course_module`                                                                                          |
+| Materials | `read_file`, `list_activities`, `get_page`, `list_wikis`, `get_wiki_pages`, `get_glossary_entries`, `get_lesson_pages`, `get_choice_results`, `get_feedback_analysis` |
+| Work      | `list_assignments`, `get_submission_status`, `list_quizzes`, `get_quiz_attempts`, `get_quiz_attempt_review`                                                           |
+| Calendar  | `get_upcoming_events`, `get_course_events`, `get_course_completion`                                                                                                   |
+| Grades    | `get_grades`, `get_grades_overview`                                                                                                                                   |
+| Forums    | `list_forums`, `list_forum_discussions`, `get_forum_posts`                                                                                                            |
+| People    | `get_course_participants`, `get_user_profile`                                                                                                                         |
+| Messages  | `list_conversations`, `get_conversation_messages`                                                                                                                     |
+| Activity  | `get_notifications`                                                                                                                                                   |
 
 `read_file` takes a `fileurl` from another tool and returns text for PDF (text layer only), DOCX, PPTX, XLSX, LibreOffice (ODT, ODS, ODP), HTML and
 plain text; images come back as images. A ZIP archive comes back as a list of its files, and passing one of their paths
@@ -59,6 +61,23 @@ and its name do not give is identified from its content (a few magic numbers, or
 If a conversion fails (or the daily Workers AI allowance runs out), `read_file` falls back to `extract` and says so.
 Images are only described when `markdown` is asked for, because a description is a summary and uses the allowance;
 images inside documents are never converted. With `markdown`, files are sent to Workers AI for conversion.
+
+`list_activities` lists one kind of activity of a course: `resource`, `page`, `url`, `label`, `glossary`, `lesson`,
+`choice` or `feedback`. Pages are listed without their bodies (name, ids and size), because a course can hold hundreds
+of kilobytes of them; `get_page` reads one by the course-module id (the `id` in a Moodle link). Its `format` works like
+`read_file`'s `mode`: `auto` (default) is Markdown, `markdown` asks Workers AI, `extract` uses the Worker's own
+HTML-to-Markdown converter (headings, lists, links and tables; no styles or scripts), and `raw` is the HTML. Both
+Markdown formats fall back to the Worker's converter when Workers AI is missing or fails, and `auto` uses it directly
+when the page holds pasted pictures, so each stays marked where it sat. Long pages are paged with `offset` and
+`next_offset`; pictures come back as image blocks. `get_glossary_entries`, `get_lesson_pages`, `get_choice_results`
+and `get_feedback_analysis` read the matching activity types; none of them starts an attempt or records a view.
+
+`get_course_participants` lists who is enrolled (`role`: all, teachers or students), `get_user_profile` shows one
+person's contact details, and `list_conversations` and `get_conversation_messages` read the signed-in user's own
+private and group messages. These use only Moodle functions that read: reading does not mark messages as read, tell
+the sender, or record a profile view, and the server never logs names, addresses or message text (only sizes). They
+are exactly as visible as in the Moodle app for that user: Moodle decides what the token may see, and it still records
+the web service request itself, like any other call, in its own logs.
 
 [tomarkdown]: https://developers.cloudflare.com/workers-ai/features/markdown-conversion/
 

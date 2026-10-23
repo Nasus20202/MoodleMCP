@@ -1,13 +1,20 @@
 import {
+  CHOICE_RESULTS,
   COMPLETION,
+  CONVERSATIONS,
   COURSE_DATA,
   COURSE_GRADES,
   COURSES,
   DISCUSSIONS,
+  ENROLLED_USERS,
   ENROLMENTS,
+  FEEDBACK_ANALYSIS,
   FILES,
+  GLOSSARY_ENTRIES,
   GRADE_ITEMS,
   IDS,
+  LESSON_PAGES,
+  memberOf,
   type MockUser,
   NOTIFICATIONS,
   POSTS,
@@ -15,6 +22,7 @@ import {
   QUIZ_REVIEW,
   SUBMISSION,
   UPCOMING,
+  USER_PROFILES,
   WIKI_PAGES,
 } from './data.ts';
 
@@ -198,6 +206,31 @@ const HANDLERS: Record<string, Handler> = {
   mod_url_get_urls_by_courses: perCourse('urls', 'urls'),
   mod_label_get_labels_by_courses: perCourse('labels', 'labels'),
   mod_wiki_get_wikis_by_courses: perCourse('wikis', 'wikis'),
+  mod_glossary_get_glossaries_by_courses: perCourse('glossaries', 'glossaries'),
+  mod_glossary_get_entries_by_letter: (p, user) => {
+    if (numberParam(p, 'id') !== IDS.glossary) throw notFound('glossary');
+    if (p.letter !== 'ALL') throw new MoodleException('invalidparameter', 'Invalid letter');
+    enrolled(user, COURSES[0].id);
+    return GLOSSARY_ENTRIES;
+  },
+  mod_lesson_get_lessons_by_courses: perCourse('lessons', 'lessons'),
+  mod_lesson_get_pages: (p, user) => {
+    if (numberParam(p, 'lessonid') !== IDS.lesson) throw notFound('lesson');
+    enrolled(user, COURSES[0].id);
+    return LESSON_PAGES;
+  },
+  mod_choice_get_choices_by_courses: perCourse('choices', 'choices'),
+  mod_choice_get_choice_results: (p, user) => {
+    if (numberParam(p, 'choiceid') !== IDS.choice) throw notFound('choice');
+    enrolled(user, COURSES[0].id);
+    return CHOICE_RESULTS;
+  },
+  mod_feedback_get_feedbacks_by_courses: perCourse('feedbacks', 'feedbacks'),
+  mod_feedback_get_analysis: (p, user) => {
+    if (numberParam(p, 'feedbackid') !== IDS.feedback) throw notFound('feedback');
+    enrolled(user, COURSES[0].id);
+    return FEEDBACK_ANALYSIS;
+  },
   mod_wiki_get_subwiki_pages: (p, user) => {
     if (numberParam(p, 'wikiid') !== IDS.wiki) throw notFound('wiki');
     enrolled(user, COURSES[0].id);
@@ -217,6 +250,50 @@ const HANDLERS: Record<string, Handler> = {
     if (user.id !== QUIZ_ATTEMPTS.attempts[0]?.userid)
       throw new MoodleException('nopermissions', 'You cannot review this attempt');
     return QUIZ_REVIEW;
+  },
+  core_enrol_get_enrolled_users: (p, user) => {
+    const id = numberParam(p, 'courseid');
+    enrolled(user, id);
+    return ENROLLED_USERS[id] ?? [];
+  },
+  core_user_get_users_by_field: (p) => {
+    if (p.field !== 'id') throw new MoodleException('invalidparameter', 'Invalid field');
+    const profile = USER_PROFILES[numberParam(p, 'values[0]')];
+    return profile ? [profile] : [];
+  },
+  core_message_get_conversations: (p, user) => {
+    ownUser(p, 'userid', user);
+    const from = numberParam(p, 'limitfrom');
+    const num = numberParam(p, 'limitnum');
+    const conversations = Object.entries(CONVERSATIONS)
+      .filter(([, c]) => c.members.includes(user.id))
+      .map(([id, c]) => ({
+        id: Number(id),
+        name: c.name,
+        type: c.type,
+        unreadcount: c.unreadcount,
+        membercount: c.members.length,
+        isfavourite: false,
+        members: c.members.filter((m) => m !== user.id).map(memberOf),
+        messages: c.messages.slice(0, 1),
+      }));
+    return { conversations: conversations.slice(from, from + num) };
+  },
+  core_message_get_conversation_messages: (p, user) => {
+    ownUser(p, 'currentuserid', user);
+    const conversation = CONVERSATIONS[numberParam(p, 'convid')];
+    if (!conversation?.members.includes(user.id))
+      throw new MoodleException('errorconversationdoesnotexist', 'The conversation does not exist');
+    const from = numberParam(p, 'limitfrom');
+    const num = numberParam(p, 'limitnum');
+    // Moodle treats a limit of 0 as "everything"; the tool must always ask for a page.
+    if (num < 1) throw new MoodleException('invalidparameter', 'A limit is required');
+    if (p.newest !== '1') throw new MoodleException('invalidparameter', 'Newest first expected');
+    return {
+      id: numberParam(p, 'convid'),
+      members: conversation.members.map(memberOf),
+      messages: conversation.messages.slice(from, from + num),
+    };
   },
   message_popup_get_popup_notifications: (p, user) => {
     ownUser(p, 'useridto', user);
