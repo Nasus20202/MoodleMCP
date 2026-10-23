@@ -261,4 +261,10 @@ describe('list_activities', () => {
     });
     expect(resources.body.result?.content?.[0]?.text).toContain('"fileurl":"u"');
   });
+
+  it('answers with an empty list, not nothing, when the course has none', async () => {
+    const { app } = setup(() => ({ glossaries: [], warnings: [] }));
+    const { body } = await callTool(app, ToolName.ListActivities, { course_id: 3, type: 'glossary' });
+    expect(JSON.parse(body.result?.content?.[0]?.text ?? '')).toEqual({ glossaries: [] });
+  });
 });

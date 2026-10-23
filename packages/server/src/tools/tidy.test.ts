@@ -69,17 +69,24 @@ describe('pickSiteInfo', () => {
 });
 
 describe('slimMoodle', () => {
-  it('drops null, empty strings, empty lists and empty objects, at any depth', () => {
+  it('drops null, empty strings, empty objects and empty warnings, at any depth', () => {
     expect(
       slimMoodle({
         warnings: [],
         lang: null,
         intro: '',
         meta: {},
-        course: { id: 1, tags: [], nested: { a: null } },
+        course: { id: 1, warnings: [], nested: { a: null } },
         items: [{ id: 1, note: null }],
       }),
     ).toEqual({ course: { id: 1 }, items: [{ id: 1 }] });
+  });
+
+  it('keeps an empty list: it says there is nothing, which a missing key does not', () => {
+    expect(slimMoodle({ quizzes: [], warnings: [], course: { glossaries: [] } })).toEqual({
+      quizzes: [],
+      course: { glossaries: [] },
+    });
   });
 
   it('keeps zero, false and text: they are facts', () => {

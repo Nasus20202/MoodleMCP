@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import { McpClient, textOf, type ToolResult } from './mcp.ts';
-import { ALICE, BIG_PAGE_HTML, BOB, COURSE_ALG, COURSE_DATA, FILE_URLS, IDS } from './mock/data.ts';
+import {
+  ALICE,
+  BIG_PAGE_HTML,
+  BOB,
+  COURSE_ALG,
+  COURSE_DATA,
+  COURSE_DB,
+  FILE_URLS,
+  IDS,
+} from './mock/data.ts';
 import { slimmed } from './slimmed.ts';
 import { useWorld } from './world.ts';
 
@@ -29,6 +38,11 @@ describe('pages and other activities against a mock Moodle', () => {
       const items = (alg as unknown as Record<string, Record<string, unknown>[]>)[key] ?? [];
       const expected = items.map((i) => (type === 'label' ? { ...i, intro: '### Exam in January' } : i));
       expect(JSON.parse(textOf(result))).toEqual(slimmed({ [key]: expected, warnings: [] }));
+    });
+
+    it('says "none" with an empty list for a course that has none, not an empty answer', async () => {
+      const result = await alice().call('list_activities', { course_id: COURSE_DB, type: 'glossary' });
+      expect(JSON.parse(textOf(result))).toEqual({ glossaries: [] });
     });
 
     it('lists pages without their bodies, which get_page then reads', async () => {

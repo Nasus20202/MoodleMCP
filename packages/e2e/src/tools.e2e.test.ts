@@ -188,6 +188,7 @@ const CASES: ToolCase[] = [
           course: { id: COURSE_ALG, shortname: 'ALG' },
         },
       ],
+      daynames: [],
       defaulteventcontext: 1,
     },
   },

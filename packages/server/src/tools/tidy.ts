@@ -81,16 +81,21 @@ function mapStrings(value: unknown, fn: (text: string) => string): unknown {
 const NOISE_KEY =
   /^(?:profileimageurl\w*|\w+format|legacyfiles(?:last)?|enableaitools|enabledaiactions|displayoptions|modicon)$/;
 
-const isEmpty = (value: unknown) =>
+/**
+ * Whether a field says nothing. An empty list of anything but `warnings` does say something ("none": no
+ * glossaries in this course), which a missing key would not.
+ */
+const saysNothing = (key: string, value: unknown) =>
   value === null ||
   value === '' ||
-  (Array.isArray(value) && value.length === 0) ||
+  (Array.isArray(value) && value.length === 0 && key === 'warnings') ||
   (typeof value === 'object' && value !== null && !Array.isArray(value) && Object.keys(value).length === 0);
 
 /**
- * Drops from a Moodle result what says nothing: fields that are null, an empty string, an empty list or an
- * empty object (`warnings: []`, `lang: null`), and the {@link NOISE_KEY} fields. A zero or false stays, because
- * `visible: 0` and a grade of 0 are facts. Items of a list are kept as they are, since their position can matter.
+ * Drops from a Moodle result what says nothing: fields that are null, an empty string, an empty object or
+ * empty `warnings` (`lang: null`, `warnings: []`), and the {@link NOISE_KEY} fields. Other empty lists, a zero and a
+ * false stay, because `quizzes: []`, `visible: 0` and a grade of 0 are facts. Items of a list are kept as they are,
+ * since their position can matter.
  */
 export function slimMoodle(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(slimMoodle);
@@ -99,7 +104,7 @@ export function slimMoodle(value: unknown): unknown {
     Object.entries(value)
       .filter(([key]) => !NOISE_KEY.test(key))
       .map(([key, item]) => [key, slimMoodle(item)] as const)
-      .filter(([, item]) => !isEmpty(item)),
+      .filter(([key, item]) => !saysNothing(key, item)),
   );
 }
 
