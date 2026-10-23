@@ -6,7 +6,7 @@ import type { Logger } from '../logger.ts';
 import type { MoodleClient, Params } from '../moodle/client.ts';
 import type { MoodleFunction } from '../moodle/functions.ts';
 import type { ToolName } from './names.ts';
-import { tidyToJson } from './tidy.ts';
+import { slimMoodle, tidyToJson } from './tidy.ts';
 
 /** One block of a tool result, as MCP clients receive it. */
 export type ToolContent =
@@ -62,7 +62,7 @@ export function defineTool<Schema extends z.ZodObject>(spec: ToolSpec<Schema>): 
     input: spec.input,
     async run({ client }, input) {
       const result = await client.call(spec.fn, await spec.params(input, client));
-      return renderResult(client, spec.shape ? spec.shape(result) : result);
+      return renderResult(client, slimMoodle(spec.shape ? spec.shape(result) : result));
     },
   });
 }

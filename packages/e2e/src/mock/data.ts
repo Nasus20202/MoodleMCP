@@ -452,7 +452,12 @@ export const POSTS = {
       id: 1202,
       discussionid: IDS.discussion,
       subject: 'Re: Exam date',
-      author: { fullname: 'Alice Anderson' },
+      author: {
+        fullname: 'Alice Anderson',
+        urls: { profileimage: 'https://moodle.example.edu/2025/pluginfile.php/5/user/icon/f1' },
+        profileimageurl: 'https://moodle.example.edu/2025/pluginfile.php/5/user/icon/f1',
+      },
+      messageformat: 1,
       message: '<p>Thank you!</p>',
       attachments: [],
     },

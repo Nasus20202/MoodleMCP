@@ -4,6 +4,7 @@ import { MoodleFunction } from '../moodle/functions.ts';
 import { getPageTool, listActivitiesTool } from './activities.ts';
 import { defineTool } from './define.ts';
 import { ToolName } from './names.ts';
+import { getCourseContentsTool } from './outline.ts';
 import {
   getConversationMessagesTool,
   getCourseParticipantsTool,
@@ -55,19 +56,7 @@ export const TOOLS = [
     fn: MoodleFunction.SearchCourses,
     params: ({ query }) => ({ criterianame: 'search', criteriavalue: query }),
   }),
-  defineTool({
-    name: ToolName.GetCourseContents,
-    description:
-      'Show the full outline of a course: every section with its activities (files, pages, assignments, ' +
-      'quizzes, forums, links, labels) in the order students see them. Files and folders list their ' +
-      '`fileurl`; pass that value to read_file to read the document. Each activity has an `id` (cmid), a ' +
-      '`modname` (type) and an `instance` id; the instance id is what list_assignments, list_forums, ' +
-      'list_quizzes, etc. call `assign_id`/`forum_id`/`quiz_id`. This is the best first look at a course, ' +
-      'but the output is large: prefer list_activities, list_assignments or list_quizzes when you only need one kind.',
-    input: courseInput,
-    fn: MoodleFunction.CourseContents,
-    params: ({ course_id }) => ({ courseid: course_id }),
-  }),
+  getCourseContentsTool,
   defineTool({
     name: ToolName.GetCourseModule,
     description:

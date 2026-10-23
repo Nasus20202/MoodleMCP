@@ -77,6 +77,12 @@ pnpm run deploy  # not `pnpm deploy`, which is a different built-in command
 5. Teach the mock Moodle the function (`packages/e2e/src/mock/moodle.ts`, with fixtures in `data.ts`) and add a row to
    `CASES` in `packages/e2e/src/tools.e2e.test.ts`; that suite fails if a tool has no row.
 
+Results go through `slimMoodle` (`tools/tidy.ts`) in `defineTool`: it drops null and empty values and the
+`NOISE_KEY` fields, so add a field there only if it never helps a reader. When a tool's JSON is mostly settings the
+model never needs, give it a `shape` that picks fields (like `pickQuizzes`) or, for a nested listing, an extractor
+that writes Markdown (like `get_course_contents` in `outline.ts`); keep every id and URL another tool takes. Tools
+that build their own result use `renderResult` and `limitResult`, which cuts anything over 80,000 characters.
+
 A tool that needs several Moodle calls or returns more than one block (like `get_page`, which looks up the module and
 then the course's pages) uses `defineCustomTool`, is listed in `TOOLS_COVERED_ELSEWHERE` in `tools.e2e.test.ts`, and has
 its own e2e file (`page.e2e.test.ts`). A new kind of activity for `list_activities` is one entry in `KINDS`

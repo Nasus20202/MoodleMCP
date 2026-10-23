@@ -80,6 +80,15 @@ the sender, or record a profile view, and the server never logs names, addresses
 are exactly as visible as in the Moodle app for that user: Moodle decides what the token may see, and it still records
 the web service request itself, like any other call, in its own logs.
 
+**What a tool returns.** Most tools relay Moodle's JSON after a shared cleanup: fields that say nothing are dropped
+(`null`, empty strings and lists, text-format flags, people's picture links, AI-tool flags, icons; zero and false
+stay), scripts and styles are removed from HTML, multi-language text is resolved to the user's language, and pictures
+pasted into HTML come back as image blocks. A few tools shape their answer for a reader instead:
+`get_course_contents` is a Markdown outline (section headings, one line per activity with its `cmid` and `instance`,
+files and links under it, labels with their text), `get_page` and `read_file` return Markdown, and `list_quizzes`
+keeps the fields a student asks about. Any result over 80,000 characters is cut with a `truncated` marker that
+says how much there was, so a client never has to cut it silently.
+
 [tomarkdown]: https://developers.cloudflare.com/workers-ai/features/markdown-conversion/
 
 ## Configuration

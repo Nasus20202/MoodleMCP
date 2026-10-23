@@ -75,6 +75,35 @@ function mapStrings(value: unknown, fn: (text: string) => string): unknown {
 }
 
 /**
+ * Fields of Moodle results that no reader needs: how a text is formatted (the text is HTML anyway), the
+ * picture links of people, the AI-tool flags, PHP-serialised display settings and activity icon URLs.
+ */
+const NOISE_KEY =
+  /^(?:profileimageurl\w*|\w+format|legacyfiles(?:last)?|enableaitools|enabledaiactions|displayoptions|modicon)$/;
+
+const isEmpty = (value: unknown) =>
+  value === null ||
+  value === '' ||
+  (Array.isArray(value) && value.length === 0) ||
+  (typeof value === 'object' && value !== null && !Array.isArray(value) && Object.keys(value).length === 0);
+
+/**
+ * Drops from a Moodle result what says nothing: fields that are null, an empty string, an empty list or an
+ * empty object (`warnings: []`, `lang: null`), and the {@link NOISE_KEY} fields. A zero or false stays, because
+ * `visible: 0` and a grade of 0 are facts. Items of a list are kept as they are, since their position can matter.
+ */
+export function slimMoodle(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(slimMoodle);
+  if (typeof value !== 'object' || value === null) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !NOISE_KEY.test(key))
+      .map(([key, item]) => [key, slimMoodle(item)] as const)
+      .filter(([, item]) => !isEmpty(item)),
+  );
+}
+
+/**
  * Tidies a Moodle result and serialises it. `lang` is asked for only when the text holds multi-language
  * markup, because finding out the user's language costs a request.
  */

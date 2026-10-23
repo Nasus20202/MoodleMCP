@@ -8,7 +8,7 @@ import { defineCustomTool, imageNote, jsonContent, renderResult, type ToolConten
 import { ToolName } from './names.ts';
 import { embeddedImageBlocks, readHtml } from './read-file.ts';
 import { DEFAULT_CHARS, MAX_CHARS } from './read-file-results.ts';
-import { resolveMlang, stripHtmlBloat } from './tidy.ts';
+import { resolveMlang, slimMoodle, stripHtmlBloat } from './tidy.ts';
 
 /** How a kind of activity is listed: the Moodle function and the key its list sits under. */
 interface ActivityKind {
@@ -91,7 +91,7 @@ export const listActivitiesTool = defineCustomTool({
     // Resources keep their file lists: the `fileurl` in them is what read_file needs.
     const reduce = type === 'page' ? describePage : type === 'resource' ? undefined : withoutIntroFiles;
     const shaped = reduce && Array.isArray(list) ? { ...result, [kind.key]: list.map(reduce) } : result;
-    return renderResult(client, shaped);
+    return renderResult(client, slimMoodle(shaped));
   },
 });
 

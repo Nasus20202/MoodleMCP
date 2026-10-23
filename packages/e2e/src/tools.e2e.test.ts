@@ -25,6 +25,7 @@ import {
   UPCOMING,
   WIKI_PAGES,
 } from './mock/data.ts';
+import { slimmed } from './slimmed.ts';
 import { useWorld } from './world.ts';
 
 const SITE_INFO = 'core_webservice_get_site_info';
@@ -66,12 +67,6 @@ const CASES: ToolCase[] = [
     args: { query: 'DATABASES' },
     fn: 'core_course_search_courses',
     expected: { total: 1, courses: [COURSES[1]] },
-  },
-  {
-    tool: 'get_course_contents',
-    args: { course_id: COURSE_ALG },
-    fn: 'core_course_get_contents',
-    expected: alg.contents,
   },
   {
     tool: 'get_course_module',
@@ -228,6 +223,7 @@ const CASES: ToolCase[] = [
 /** The tests are only as good as their coverage: every tool the server exposes needs a row above. */
 const TOOLS_COVERED_ELSEWHERE = [
   'read_file',
+  'get_course_contents',
   'get_page',
   'get_course_participants',
   'get_user_profile',
@@ -289,7 +285,7 @@ describe('MCP tools against a mock Moodle', () => {
       expect(result.isError).toBeUndefined();
       expect(result.content).toHaveLength(1);
       expect(result.content[0]?.type).toBe('text');
-      expect(JSON.parse(textOf(result))).toEqual(expected);
+      expect(JSON.parse(textOf(result))).toEqual(slimmed(expected));
     });
 
     it('calls only its Moodle function (after a user lookup when it needs the user id), as the token owner', async () => {
@@ -354,17 +350,17 @@ describe('MCP tools against a mock Moodle', () => {
       const course = courses.find((c) => c.shortname === 'ALG');
       expect(course).toBeDefined();
 
-      const sections = await client.json<
-        { modules: { id: number; modname: string; instance: number; contents?: { fileurl: string }[] }[] }[]
-      >('get_course_contents', { course_id: course?.id });
-      const modules = sections.flatMap((s) => s.modules);
-      const assign = modules.find((m) => m.modname === 'assign');
+      // The outline is Markdown: ids and file URLs are read from its lines, as a model reads them.
+      const outline = textOf(await client.call('get_course_contents', { course_id: course?.id }));
+      const assign = /assign \*\*Homework 1\*\* \(cmid \d+, instance (\d+)\)/.exec(outline);
       const submission = await client.json<typeof SUBMISSION>('get_submission_status', {
-        assign_id: assign?.instance,
+        assign_id: Number(assign?.[1]),
       });
       expect(submission.feedback.gradefordisplay).toBe('8.50 / 10');
 
-      const fileUrl = modules.find((m) => m.modname === 'resource')?.contents?.[0]?.fileurl;
+      const fileUrl = /resource \*\*Lecture notes\*\*[^\n]*\n(?: {2}>[^\n]*\n)? {2}- file [^:]*: (\S+)/.exec(
+        outline,
+      )?.[1];
       const file = await client.json<{ text: string }>('read_file', { file_url: fileUrl });
       expect(file.text).toContain('Big-O notes');
     });

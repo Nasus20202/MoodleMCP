@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { McpClient, textOf, type ToolResult } from './mcp.ts';
-import { ALICE, BIG_PAGE_HTML, BOB, COURSE_ALG, COURSE_DATA, IDS } from './mock/data.ts';
+import { ALICE, BIG_PAGE_HTML, BOB, COURSE_ALG, COURSE_DATA, FILE_URLS, IDS } from './mock/data.ts';
+import { slimmed } from './slimmed.ts';
 import { useWorld } from './world.ts';
 
 const alg = COURSE_DATA[COURSE_ALG];
@@ -24,10 +25,9 @@ describe('pages and other activities against a mock Moodle', () => {
       ['feedback', 'feedbacks'],
     ])('lists %s', async (type, key) => {
       const result = await alice().call('list_activities', { course_id: COURSE_ALG, type });
-      expect(JSON.parse(textOf(result))).toEqual({
-        [key]: (alg as unknown as Record<string, unknown[]>)[key],
-        warnings: [],
-      });
+      expect(JSON.parse(textOf(result))).toEqual(
+        slimmed({ [key]: (alg as unknown as Record<string, unknown[]>)[key], warnings: [] }),
+      );
     });
 
     it('lists pages without their bodies, which get_page then reads', async () => {
@@ -135,6 +135,34 @@ describe('pages and other activities against a mock Moodle', () => {
       const logs = (await world.worker.logs()).map((l) => JSON.stringify(l)).join('\n');
       expect(logs).toContain('get_page');
       expect(logs).not.toMatch(/Quicksort|Big page|Filler sentence|pluginfile|alice-secret/);
+    });
+  });
+
+  describe('get_course_contents', () => {
+    it('is a Markdown outline with every id and file URL a model passes on', async () => {
+      const result = await alice().call('get_course_contents', { course_id: COURSE_ALG });
+      expect(result.content).toHaveLength(1);
+      const text = textOf(result);
+      expect(text).toMatch(/^# Course outline: 2 sections, 4 activities/);
+      expect(text).toContain('## 0. Week 1: Sorting');
+      expect(text).toContain(`- assign **Homework 1** (cmid ${IDS.cmidAssign}, instance ${IDS.assign})`);
+      expect(text).toContain(`- page **Welcome page** (cmid ${IDS.cmidPage}, instance 30)`);
+      expect(text).toContain(`- page **Big page** (cmid ${IDS.cmidBigPage}, instance 31)`);
+      expect(text).toContain(`  - file notes.txt (37 B): ${FILE_URLS.notes}`);
+      expect(world.moodle.restCalls.map((r) => r.fn)).toEqual(['core_course_get_contents']);
+    });
+
+    it('is far smaller than the JSON Moodle sends', async () => {
+      const text = textOf(await alice().call('get_course_contents', { course_id: COURSE_ALG }));
+      expect(text.length).toBeLessThan(JSON.stringify(alg.contents).length);
+    });
+
+    it('lets Moodle refuse a course the user is not enrolled in', async () => {
+      const result = await McpClient.bearer(world.worker, BOB.token).call('get_course_contents', {
+        course_id: COURSE_ALG,
+      });
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain('not enrolled');
     });
   });
 });
