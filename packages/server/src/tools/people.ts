@@ -40,7 +40,8 @@ export const getCourseParticipantsTool = defineCustomTool({
     'List the people enrolled in a course with their `id`, name, email (when the site shows it) and roles. ' +
     'Use `role` teachers to find who teaches the course and how to contact them. A user `id` from here is the ' +
     '`user_id` for get_user_profile. Long lists are paged with `offset` and `limit`; `total` is the full count. ' +
-    'Moodle refuses this when the site does not let students see participants.',
+    'Moodle refuses this when the site does not let students see participants; then the teachers of a ' +
+    'course are in the `contacts` of search_courses.',
   input: z.object({
     course_id: z
       .number()

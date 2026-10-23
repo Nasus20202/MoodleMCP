@@ -49,7 +49,8 @@ export const TOOLS = [
     name: ToolName.SearchCourses,
     description:
       'Search ALL visible courses on the site by name, including ones the user is not enrolled in. To find ' +
-      "one of the user's own courses, use list_courses instead.",
+      "one of the user's own courses, use list_courses instead. Each course lists its `contacts` (usually the " +
+      'teachers) with their user ids; pass one to get_user_profile for an email address.',
     input: z.object({ query: z.string().min(1).describe('text to search for in course names') }),
     fn: MoodleFunction.SearchCourses,
     params: ({ query }) => ({ criterianame: 'search', criteriavalue: query }),
