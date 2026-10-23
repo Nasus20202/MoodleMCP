@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { pickSiteInfo, resolveMlang, stripHtmlBloat, tidyToJson } from './tidy.ts';
+import { resolveMlang, slimMoodle, stripHtmlBloat, tidyToJson } from './tidy.ts';
 
 describe('stripHtmlBloat', () => {
   it('removes scripts, styles, svg and embedded images but keeps the text', () => {
@@ -56,14 +56,60 @@ describe('tidyToJson', () => {
   });
 });
 
-describe('pickSiteInfo', () => {
-  it('keeps the identity fields and drops the private key and function list', () => {
-    const out = pickSiteInfo({
-      sitename: 'S',
-      userid: 3,
-      userprivateaccesskey: 'secret',
-      functions: [{ name: 'f' }],
+describe('slimMoodle', () => {
+  it('drops null, empty strings, empty objects and empty warnings, at any depth', () => {
+    expect(
+      slimMoodle({
+        warnings: [],
+        lang: null,
+        intro: '',
+        meta: {},
+        course: { id: 1, warnings: [], nested: { a: null } },
+        items: [{ id: 1, note: null }],
+      }),
+    ).toEqual({ course: { id: 1 }, items: [{ id: 1 }] });
+  });
+
+  it('keeps an empty list: it says there is nothing, which a missing key does not', () => {
+    expect(slimMoodle({ quizzes: [], warnings: [], course: { glossaries: [] } })).toEqual({
+      quizzes: [],
+      course: { glossaries: [] },
     });
-    expect(out).toEqual({ sitename: 'S', userid: 3 });
+  });
+
+  it('keeps zero, false and text: they are facts', () => {
+    const value = { visible: 0, grade: 0, hidden: false, name: '0', list: [0, false, 'x'] };
+    expect(slimMoodle(value)).toEqual(value);
+  });
+
+  it('keeps the places of list items, even empty ones', () => {
+    expect(slimMoodle({ row: [null, 'a', {}, 'b'] })).toEqual({ row: [null, 'a', {}, 'b'] });
+  });
+
+  it('removes fields that only describe formatting, pictures, AI flags and icons', () => {
+    expect(
+      slimMoodle({
+        id: 1,
+        introformat: 1,
+        summaryformat: 1,
+        messageformat: 1,
+        profileimageurl: 'u',
+        profileimageurlsmall: 'u',
+        enableaitools: true,
+        enabledaiactions: 'x',
+        legacyfiles: 0,
+        legacyfileslast: 5,
+        displayoptions: 'a:1:{}',
+        modicon: 'u',
+        format: 'topics',
+        fileformat: 'x',
+      }),
+    ).toEqual({ id: 1, format: 'topics' });
+  });
+
+  it('leaves values that are not objects alone', () => {
+    expect(slimMoodle('text')).toBe('text');
+    expect(slimMoodle(7)).toBe(7);
+    expect(slimMoodle(null)).toBeNull();
   });
 });

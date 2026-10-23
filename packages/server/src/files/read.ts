@@ -1,8 +1,8 @@
 import type { DownloadedFile } from '../moodle/client.ts';
+import { htmlToMarkdown } from './html-markdown.ts';
 import { ODF_TYPES, odfText, ODP, ODS, ODT } from './odf.ts';
 import type { PdfChunk, PdfWindow } from './pdf.ts';
 import { decodeText, type TextEncoding } from './sniff.ts';
-import { htmlToText } from './text.ts';
 
 /** Largest image handed to the model as an image rather than described. */
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
@@ -134,7 +134,7 @@ export async function readFile(
     }
     case 'html': {
       const { text, encoding } = decodeText(file.bytes);
-      return { kind: 'text', format: 'html', text: htmlToText(text), encoding };
+      return { kind: 'text', format: 'html', text: htmlToMarkdown(text), encoding };
     }
     case 'image':
       if (file.bytes.byteLength > MAX_IMAGE_BYTES) {

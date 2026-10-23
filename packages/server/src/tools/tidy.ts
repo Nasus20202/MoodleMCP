@@ -75,6 +75,40 @@ function mapStrings(value: unknown, fn: (text: string) => string): unknown {
 }
 
 /**
+ * Fields of Moodle results that no reader needs: how a text is formatted (the text is HTML anyway), the
+ * picture links of people, the AI-tool flags, PHP-serialised display settings and activity icon URLs.
+ */
+const NOISE_KEY =
+  /^(?:profileimageurl\w*|\w+format|legacyfiles(?:last)?|enableaitools|enabledaiactions|displayoptions|modicon)$/;
+
+/**
+ * Whether a field says nothing. An empty list of anything but `warnings` does say something ("none": no
+ * glossaries in this course), which a missing key would not.
+ */
+const saysNothing = (key: string, value: unknown) =>
+  value === null ||
+  value === '' ||
+  (Array.isArray(value) && value.length === 0 && key === 'warnings') ||
+  (typeof value === 'object' && value !== null && !Array.isArray(value) && Object.keys(value).length === 0);
+
+/**
+ * Drops from a Moodle result what says nothing: fields that are null, an empty string, an empty object or
+ * empty `warnings` (`lang: null`, `warnings: []`), and the {@link NOISE_KEY} fields. Other empty lists, a zero and a
+ * false stay, because `quizzes: []`, `visible: 0` and a grade of 0 are facts. Items of a list are kept as they are,
+ * since their position can matter.
+ */
+export function slimMoodle(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(slimMoodle);
+  if (typeof value !== 'object' || value === null) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !NOISE_KEY.test(key))
+      .map(([key, item]) => [key, slimMoodle(item)] as const)
+      .filter(([key, item]) => !saysNothing(key, item)),
+  );
+}
+
+/**
  * Tidies a Moodle result and serialises it. `lang` is asked for only when the text holds multi-language
  * markup, because finding out the user's language costs a request.
  */
@@ -83,24 +117,4 @@ export async function tidyToJson(value: unknown, lang: () => Promise<string>): P
   if (!text.includes('{mlang')) return text;
   const wanted = await lang();
   return JSON.stringify(mapStrings(JSON.parse(text), (t) => resolveMlang(t, wanted)));
-}
-
-/** The fields of `core_webservice_get_site_info` worth showing; it also holds a private key and ~480 function names. */
-const SITE_INFO_FIELDS = [
-  'sitename',
-  'siteurl',
-  'username',
-  'firstname',
-  'lastname',
-  'fullname',
-  'lang',
-  'userid',
-  'release',
-  'version',
-] as const;
-
-export function pickSiteInfo(info: unknown): unknown {
-  if (typeof info !== 'object' || info === null) return info;
-  const source = info as Record<string, unknown>;
-  return Object.fromEntries(SITE_INFO_FIELDS.filter((f) => f in source).map((f) => [f, source[f]]));
 }

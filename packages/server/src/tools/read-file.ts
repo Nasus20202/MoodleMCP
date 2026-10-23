@@ -39,7 +39,7 @@ const input = z.object({
     .enum([ReadMode.Auto, ReadMode.Markdown, ReadMode.Extract, ReadMode.Resource])
     .default(ReadMode.Auto)
     .describe(
-      'auto (default): Markdown for PDF, Word, Excel and HTML when available, otherwise extracted text; ' +
+      'auto (default): Markdown for PDF, Word and Excel when available, otherwise extracted text (HTML becomes Markdown through our own converter); ' +
         'markdown: convert to Markdown (keeps headings and tables; for an image, a written description); ' +
         'extract: our own text extraction, PDFs page by page and images as images; ' +
         'resource: the unmodified file (for a ZIP with `entry`, that entry), any type, ignoring offset and max_chars: an image block for images, ' +
@@ -89,7 +89,7 @@ export const readFileTool = defineCustomTool({
   description:
     'Read the contents of a file from a course: PDF slides and notes, Word, PowerPoint and Excel documents, ' +
     'HTML, plain text/code/CSV, and images. Pass a `fileurl` exactly as it appears in the output of ' +
-    'get_course_contents, list_resources, list_pages, list_labels, list_wikis or get_forum_posts ' +
+    'get_course_contents, list_activities, get_page, get_wiki_pages or get_forum_posts ' +
     '(it looks like https://<site>/webservice/pluginfile.php/...). Returns JSON with the `text`, the `mode` ' +
     'used, and paging info; if `next_offset` is not null the file is longer, so call again with `offset` ' +
     'set to that value (and `page` to `next_page` when there is one). In extract mode PDFs are read a few ' +
@@ -156,6 +156,32 @@ interface Origin {
   nested?: boolean;
 }
 
+/** The arguments of {@link readHtml}: what to turn the HTML into, and which part of it. */
+export interface HtmlReadArgs {
+  mode: Exclude<ReadMode, typeof ReadMode.Resource>;
+  offset: number;
+  max_chars: number;
+}
+
+/**
+ * Reads HTML that did not come from a file (a Page activity's content) the way `read_file` reads an HTML
+ * file: Markdown through Workers AI or our own converter, paged by characters.
+ */
+export function readHtml(
+  context: ToolContext,
+  html: string,
+  name: string,
+  args: HtmlReadArgs,
+): Promise<ToolContent[]> {
+  const file: DownloadedFile = {
+    bytes: new TextEncoder().encode(html),
+    mimeType: 'text/html',
+    filename: `${name}.html`,
+    skipped: false,
+  };
+  return readDocument(context, file, { ...args, file_url: '', page: 1, entry: undefined }, {});
+}
+
 async function readDocument(
   context: ToolContext,
   file: DownloadedFile,
@@ -197,12 +223,14 @@ async function readDocument(
   }
   const content = await convertOrExtract(context, file, format, args, origin);
   // Pictures pasted into a page live in its HTML as base64; the first page of a long page carries them all.
-  return format === 'html' && args.offset === 0 ? [...content, ...embeddedImageBlocks(file)] : content;
+  return format === 'html' && args.offset === 0
+    ? [...content, ...embeddedImageBlocks(decodeText(file.bytes).text)]
+    : content;
 }
 
 /** The images inside an HTML file as image blocks, with a line saying what they are. */
-function embeddedImageBlocks(file: DownloadedFile): ToolContent[] {
-  const { images, skipped } = embeddedImages(decodeText(file.bytes).text);
+export function embeddedImageBlocks(html: string): ToolContent[] {
+  const { images, skipped } = embeddedImages(html);
   if (images.length === 0 && skipped === 0) return [];
   const note =
     `${images.length} image(s) embedded in the page are attached after this, in page order.` +

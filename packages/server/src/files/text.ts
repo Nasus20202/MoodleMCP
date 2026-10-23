@@ -28,14 +28,3 @@ export function tidy(text: string): string {
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
-
-/** Plain text of an HTML document: scripts and styles dropped, block elements become line breaks. */
-export function htmlToText(html: string): string {
-  const withBreaks = html
-    .replace(/<(script|style|head)\b[\s\S]*?<\/\1>/gi, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<li\b[^>]*>/gi, '\n- ')
-    .replace(/<\/(p|div|h[1-6]|tr|ul|ol|table|section|article|blockquote|pre)>/gi, '\n');
-  return tidy(decodeEntities(withBreaks.replace(/<[^>]+>/g, '')));
-}

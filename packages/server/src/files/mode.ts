@@ -3,7 +3,7 @@ import type { Kind } from './read.ts';
 
 /** How read_file turns a file into something the model can read. */
 export const ReadMode = {
-  /** Markdown where it is lossless and supported, extraction otherwise. */
+  /** Workers AI Markdown for PDF, Word and Excel when available; our own extraction (and HTML converter) otherwise. */
   Auto: 'auto',
   /** Workers AI's `toMarkdown`: no Worker CPU, keeps headings and tables; images get a description. */
   Markdown: 'markdown',
@@ -45,7 +45,9 @@ export function chooseMode(
       }
       return { mode: ReadMode.Markdown };
     case ReadMode.Auto:
-      return canConvert && MARKDOWN_KINDS.has(kind) && !(kind === 'pdf' && page > 1)
+      // HTML is converted by our own converter: it is deterministic, free, and cleaner than Workers AI on
+      // Moodle's editor markup (stray emphasis markers, empty headings).
+      return canConvert && MARKDOWN_KINDS.has(kind) && kind !== 'html' && !(kind === 'pdf' && page > 1)
         ? { mode: ReadMode.Markdown }
         : extract();
   }

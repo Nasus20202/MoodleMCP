@@ -11,7 +11,8 @@ const attr = (tag: string, name: string) => new RegExp(`\\b${name}="([^"]*)"`).e
 
 /**
  * Text of a LibreOffice / OpenDocument file (.odt, .ods, .odp), from its `content.xml`. Spreadsheets give one
- * tab-separated block per sheet and presentations one block per slide, like their Microsoft counterparts.
+ * tab-separated block per sheet and presentations one block per slide. Unlike Word and Excel files, tables are not
+ * turned into Markdown here.
  */
 export function odfText(bytes: Uint8Array, type: string): { text: string; pages?: number } {
   const xml = unzipText(bytes, (name) => name === 'content.xml').get('content.xml') ?? '';

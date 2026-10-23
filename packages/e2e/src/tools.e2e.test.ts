@@ -4,23 +4,25 @@ import { McpClient, textOf } from './mcp.ts';
 import {
   ALICE,
   BOB,
-  COMPLETION,
+  CHOICE_RESULTS,
   COURSE_ALG,
   COURSE_DATA,
   COURSE_DB,
   COURSE_GRADES,
   COURSES,
   DISCUSSIONS,
-  GRADE_ITEMS,
+  FEEDBACK_ANALYSIS,
+  GLOSSARY_ENTRIES,
   IDS,
+  LESSON_PAGES,
   NOTIFICATIONS,
   POSTS,
   QUIZ_ATTEMPTS,
   QUIZ_REVIEW,
   SUBMISSION,
-  UPCOMING,
   WIKI_PAGES,
 } from './mock/data.ts';
+import { slimmed } from './slimmed.ts';
 import { useWorld } from './world.ts';
 
 const SITE_INFO = 'core_webservice_get_site_info';
@@ -64,12 +66,6 @@ const CASES: ToolCase[] = [
     expected: { total: 1, courses: [COURSES[1]] },
   },
   {
-    tool: 'get_course_contents',
-    args: { course_id: COURSE_ALG },
-    fn: 'core_course_get_contents',
-    expected: alg.contents,
-  },
-  {
     tool: 'get_course_module',
     args: { cmid: IDS.cmidAssign },
     fn: 'core_course_get_course_module',
@@ -84,28 +80,10 @@ const CASES: ToolCase[] = [
     },
   },
   {
-    tool: 'list_resources',
-    args: { course_id: COURSE_ALG },
+    tool: 'list_activities',
+    args: { course_id: COURSE_ALG, type: 'resource' },
     fn: 'mod_resource_get_resources_by_courses',
     expected: { resources: alg.resources, warnings: [] },
-  },
-  {
-    tool: 'list_pages',
-    args: { course_id: COURSE_ALG },
-    fn: 'mod_page_get_pages_by_courses',
-    expected: { pages: alg.pages, warnings: [] },
-  },
-  {
-    tool: 'list_urls',
-    args: { course_id: COURSE_ALG },
-    fn: 'mod_url_get_urls_by_courses',
-    expected: { urls: alg.urls, warnings: [] },
-  },
-  {
-    tool: 'list_labels',
-    args: { course_id: COURSE_ALG },
-    fn: 'mod_label_get_labels_by_courses',
-    expected: { labels: alg.labels, warnings: [] },
   },
   {
     tool: 'list_wikis',
@@ -118,6 +96,30 @@ const CASES: ToolCase[] = [
     args: { wiki_id: IDS.wiki },
     fn: 'mod_wiki_get_subwiki_pages',
     expected: WIKI_PAGES,
+  },
+  {
+    tool: 'get_glossary_entries',
+    args: { glossary_id: IDS.glossary },
+    fn: 'mod_glossary_get_entries_by_letter',
+    expected: GLOSSARY_ENTRIES,
+  },
+  {
+    tool: 'get_lesson_pages',
+    args: { lesson_id: IDS.lesson },
+    fn: 'mod_lesson_get_pages',
+    expected: LESSON_PAGES,
+  },
+  {
+    tool: 'get_choice_results',
+    args: { choice_id: IDS.choice },
+    fn: 'mod_choice_get_choice_results',
+    expected: CHOICE_RESULTS,
+  },
+  {
+    tool: 'get_feedback_analysis',
+    args: { feedback_id: IDS.feedback },
+    fn: 'mod_feedback_get_analysis',
+    expected: FEEDBACK_ANALYSIS,
   },
   {
     tool: 'list_assignments',
@@ -140,7 +142,23 @@ const CASES: ToolCase[] = [
     tool: 'list_quizzes',
     args: { course_id: COURSE_ALG },
     fn: 'mod_quiz_get_quizzes_by_courses',
-    expected: { quizzes: alg.quizzes, warnings: [] },
+    // The intro is short Markdown and the quiz's dozens of settings are left out.
+    expected: {
+      quizzes: [
+        {
+          id: IDS.quiz,
+          course: COURSE_ALG,
+          coursemodule: 2010,
+          name: 'Sorting quiz',
+          timeopen: 1_761_000_000,
+          timeclose: 1_762_500_000,
+          timelimit: 1800,
+          attempts: 2,
+          grade: 10,
+          intro: 'Be **quick**.',
+        },
+      ],
+    },
   },
   {
     tool: 'get_quiz_attempts',
@@ -159,27 +177,89 @@ const CASES: ToolCase[] = [
     tool: 'get_upcoming_events',
     args: {},
     fn: 'core_calendar_get_calendar_upcoming_view',
-    expected: UPCOMING,
+    // No icon, edit link or course summary; the description is Markdown.
+    expected: {
+      events: [
+        {
+          id: 900,
+          name: 'Homework 1 is due',
+          timestart: 1_762_000_000,
+          description: 'Hand in **by Friday**.',
+          course: { id: COURSE_ALG, shortname: 'ALG' },
+        },
+      ],
+      daynames: [],
+      defaulteventcontext: 1,
+    },
   },
   {
     tool: 'get_course_events',
     args: { course_id: COURSE_ALG },
     fn: 'core_calendar_get_action_events_by_course',
-    expected: { events: alg.events, firstid: 900, lastid: 900 },
+    expected: {
+      events: [
+        {
+          id: 900,
+          name: 'Homework 1 is due',
+          modulename: 'assign',
+          instance: IDS.assign,
+          timestart: 1_762_000_000,
+          description: 'Hand in **by Friday**.',
+          course: { id: COURSE_ALG, fullname: 'Algorithms', shortname: 'ALG' },
+          action: {
+            name: 'addsubmission',
+            url: 'https://moodle.example.edu/2025/mod/assign/view.php?id=2001',
+            actionable: true,
+          },
+        },
+      ],
+      firstid: 900,
+      lastid: 900,
+    },
   },
   {
     tool: 'get_course_completion',
     args: { course_id: COURSE_ALG },
     fn: 'core_completion_get_activities_completion_status',
     looksUpUser: true,
-    expected: COMPLETION,
+    // The rules behind the state are lines of text.
+    expected: {
+      statuses: [
+        {
+          cmid: IDS.cmidAssign,
+          modname: 'assign',
+          instance: IDS.assign,
+          state: 1,
+          timecompleted: 1_761_500_000,
+          tracking: 2,
+          rules: ['completionview: Done: View'],
+        },
+      ],
+    },
   },
   {
     tool: 'get_grades',
     args: { course_id: COURSE_ALG },
     fn: 'gradereport_user_get_grade_items',
     looksUpUser: true,
-    expected: GRADE_ITEMS,
+    // The grade, its range and feedback as Markdown; bookkeeping flags are left out.
+    expected: {
+      usergrades: [
+        {
+          courseid: COURSE_ALG,
+          userid: ALICE.id,
+          gradeitems: [
+            {
+              id: 1,
+              itemname: 'Homework 1',
+              gradeformatted: '8.50',
+              percentageformatted: '85 %',
+              feedback: 'Well *done*',
+            },
+          ],
+        },
+      ],
+    },
   },
   {
     tool: 'get_grades_overview',
@@ -216,7 +296,15 @@ const CASES: ToolCase[] = [
 ];
 
 /** The tests are only as good as their coverage: every tool the server exposes needs a row above. */
-const TOOLS_COVERED_ELSEWHERE = ['read_file'];
+const TOOLS_COVERED_ELSEWHERE = [
+  'read_file',
+  'get_course_contents',
+  'get_page',
+  'get_course_participants',
+  'get_user_profile',
+  'list_conversations',
+  'get_conversation_messages',
+];
 
 describe('MCP tools against a mock Moodle', () => {
   const world = useWorld();
@@ -272,7 +360,7 @@ describe('MCP tools against a mock Moodle', () => {
       expect(result.isError).toBeUndefined();
       expect(result.content).toHaveLength(1);
       expect(result.content[0]?.type).toBe('text');
-      expect(JSON.parse(textOf(result))).toEqual(expected);
+      expect(JSON.parse(textOf(result))).toEqual(slimmed(expected));
     });
 
     it('calls only its Moodle function (after a user lookup when it needs the user id), as the token owner', async () => {
@@ -337,17 +425,17 @@ describe('MCP tools against a mock Moodle', () => {
       const course = courses.find((c) => c.shortname === 'ALG');
       expect(course).toBeDefined();
 
-      const sections = await client.json<
-        { modules: { id: number; modname: string; instance: number; contents?: { fileurl: string }[] }[] }[]
-      >('get_course_contents', { course_id: course?.id });
-      const modules = sections.flatMap((s) => s.modules);
-      const assign = modules.find((m) => m.modname === 'assign');
+      // The outline is Markdown: ids and file URLs are read from its lines, as a model reads them.
+      const outline = textOf(await client.call('get_course_contents', { course_id: course?.id }));
+      const assign = /assign \*\*Homework 1\*\* \(cmid \d+, instance (\d+)\)/.exec(outline);
       const submission = await client.json<typeof SUBMISSION>('get_submission_status', {
-        assign_id: assign?.instance,
+        assign_id: Number(assign?.[1]),
       });
       expect(submission.feedback.gradefordisplay).toBe('8.50 / 10');
 
-      const fileUrl = modules.find((m) => m.modname === 'resource')?.contents?.[0]?.fileurl;
+      const fileUrl = /resource \*\*Lecture notes\*\*[^\n]*\n(?: {2}>[^\n]*\n)? {2}- file [^:]*: (\S+)/.exec(
+        outline,
+      )?.[1];
       const file = await client.json<{ text: string }>('read_file', { file_url: fileUrl });
       expect(file.text).toContain('Big-O notes');
     });

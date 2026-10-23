@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 import type { DownloadedFile } from '../moodle/client.ts';
 import { tinyPdf } from '../test-utils.ts';
 import { classify, pageText, readFile, unsupportedReason } from './read.ts';
-import { htmlToText } from './text.ts';
 
 const file = (filename: string, bytes: Uint8Array | string, mimeType = ''): DownloadedFile => ({
   filename,
@@ -32,10 +31,10 @@ describe('readFile', () => {
   it('extracts paragraphs from a DOCX', async () => {
     const xml =
       '<w:document><w:body><w:p><w:r><w:t>First &amp; foremost</w:t></w:r></w:p>' +
-      '<w:p><w:r><w:t>Second</w:t></w:r><w:tab/><w:r><w:t>line</w:t></w:r></w:p></w:body></w:document>';
+      '<w:p><w:r><w:t>Second</w:t><w:tab/><w:t>line</w:t></w:r></w:p></w:body></w:document>';
     const docx = zipSync({ 'word/document.xml': strToU8(xml), 'word/styles.xml': strToU8('<ignored/>') });
     const result = await read(file('a.docx', docx));
-    expect(result).toEqual({ kind: 'text', format: 'docx', text: 'First & foremost\nSecond line' });
+    expect(result).toEqual({ kind: 'text', format: 'docx', text: 'First & foremost\nSecond\tline' });
   });
 
   it('extracts slides and speaker notes from a PPTX, in slide order', async () => {
@@ -55,7 +54,7 @@ describe('readFile', () => {
     });
   });
 
-  it('extracts every sheet of an XLSX as tab-separated rows', async () => {
+  it('extracts every sheet of an XLSX as a Markdown table', async () => {
     const sheet = (rows: string) => `<worksheet><sheetData>${rows}</sheetData></worksheet>`;
     const xlsx = zipSync({
       'xl/workbook.xml': strToU8(
@@ -80,7 +79,7 @@ describe('readFile', () => {
       kind: 'text',
       format: 'xlsx',
       pages: 2,
-      text: '--- Sheet: Data & more ---\nName\t\tFlag\nAnn Lee\t3.5\tTRUE\n\n--- Sheet: Empty ---\n',
+      text: '--- Sheet: Data & more ---\n| Name |  | Flag |\n| --- | --- | --- |\n| Ann Lee | 3.5 | TRUE |\n\n--- Sheet: Empty ---\n',
     });
   });
 
@@ -93,7 +92,7 @@ describe('readFile', () => {
     const result = await read(
       file('index.html', '<h1>Title</h1><p>One<br>two</p><script>x()</script>', 'text/html'),
     );
-    expect(result).toMatchObject({ kind: 'text', format: 'html', text: 'Title\nOne\ntwo' });
+    expect(result).toMatchObject({ kind: 'text', format: 'html', text: '# Title\n\nOne\ntwo' });
   });
 
   it('reads plain text and code', async () => {
@@ -179,11 +178,5 @@ describe('pageText', () => {
       totalChars: 10,
       nextOffset: null,
     });
-  });
-});
-
-describe('htmlToText', () => {
-  it('decodes entities and keeps list structure', () => {
-    expect(htmlToText('<ul><li>a &lt; b</li><li>&#322;&#x142;&nbsp;x</li></ul>')).toBe('- a < b\n- łł x');
   });
 });

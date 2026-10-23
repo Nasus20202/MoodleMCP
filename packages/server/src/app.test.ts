@@ -112,13 +112,23 @@ describe('/mcp tools', () => {
     [ToolName.GetCourseContents, { course_id: 3 }, { courseid: '3' }],
     [ToolName.ListAssignments, { course_id: 3 }, { 'courseids[0]': '3' }],
     [ToolName.ListForums, { course_id: 3 }, { 'courseids[0]': '3' }],
-    [ToolName.ListPages, { course_id: 3 }, { 'courseids[0]': '3' }],
+    [ToolName.ListActivities, { course_id: 3, type: 'page' }, { 'courseids[0]': '3' }],
+    [ToolName.ListActivities, { course_id: 3, type: 'glossary' }, { 'courseids[0]': '3' }],
+    [ToolName.ListActivities, { course_id: 3, type: 'lesson' }, { 'courseids[0]': '3' }],
+    [ToolName.ListActivities, { course_id: 3, type: 'choice' }, { 'courseids[0]': '3' }],
+    [ToolName.ListActivities, { course_id: 3, type: 'feedback' }, { 'courseids[0]': '3' }],
+    [ToolName.GetGlossaryEntries, { glossary_id: 2 }, { id: '2', letter: 'ALL', from: '0', limit: '50' }],
+    [ToolName.GetLessonPages, { lesson_id: 2 }, { lessonid: '2' }],
+    [ToolName.GetChoiceResults, { choice_id: 2 }, { choiceid: '2' }],
+    [ToolName.GetFeedbackAnalysis, { feedback_id: 2 }, { feedbackid: '2' }],
+    [ToolName.GetCourseParticipants, { course_id: 3 }, { courseid: '3' }],
+    [ToolName.GetUserProfile, { user_id: 5 }, { field: 'id', 'values[0]': '5' }],
     [ToolName.GetSubmissionStatus, { assign_id: 4 }, { assignid: '4' }],
     [ToolName.ListForumDiscussions, { forum_id: 5 }, { forumid: '5' }],
     [ToolName.GetCourseModule, { cmid: 6 }, { cmid: '6' }],
-    [ToolName.ListResources, { course_id: 3 }, { 'courseids[0]': '3' }],
-    [ToolName.ListUrls, { course_id: 3 }, { 'courseids[0]': '3' }],
-    [ToolName.ListLabels, { course_id: 3 }, { 'courseids[0]': '3' }],
+    [ToolName.ListActivities, { course_id: 3, type: 'resource' }, { 'courseids[0]': '3' }],
+    [ToolName.ListActivities, { course_id: 3, type: 'url' }, { 'courseids[0]': '3' }],
+    [ToolName.ListActivities, { course_id: 3, type: 'label' }, { 'courseids[0]': '3' }],
     [ToolName.ListWikis, { course_id: 3 }, { 'courseids[0]': '3' }],
     [ToolName.ListQuizzes, { course_id: 3 }, { 'courseids[0]': '3' }],
     [ToolName.GetWikiPages, { wiki_id: 7 }, { wikiid: '7' }],
@@ -206,15 +216,20 @@ describe('/mcp tools', () => {
 
   it('attaches pictures pasted into a page after the text, marked where they sat', async () => {
     const html = '<p>Look</p><img alt="" src="data:image/png;base64,iVBORw0KGgo=">';
-    const { app } = setup(() => ({ pages: [{ id: 1, content: html }] }));
-    const reply = await callTool(app, ToolName.ListPages, { course_id: 3 });
+    const { app } = setup((call) =>
+      (call.body as Record<string, string>).wsfunction === 'core_course_get_course_module'
+        ? { cm: { course: 3, modname: 'page', instance: 1 } }
+        : { pages: [{ id: 1, coursemodule: 8, name: 'P', content: html }] },
+    );
+    const reply = await callTool(app, ToolName.GetPage, { cmid: 8, format: 'raw' });
     const content = (reply.body.result as { content: { type: string; text?: string; data?: string }[] })
       .content;
-    expect(content.map((b) => b.type)).toEqual(['text', 'image', 'text']);
-    expect(content[0]?.text).toContain('<img alt=\\"\\" data-image=\\"1\\">');
-    expect(content[0]?.text).not.toContain('base64');
-    expect(content[1]?.data).toBe('iVBORw0KGgo=');
-    expect(content[2]?.text).toContain('1 image(s)');
+    // The page header, the text, the picture, the note about the picture.
+    expect(content.map((b) => b.type)).toEqual(['text', 'text', 'image', 'text']);
+    expect(content[1]?.text).toContain('<img alt=\\"\\" data-image=\\"1\\">');
+    expect(content[1]?.text).not.toContain('base64');
+    expect(content[2]?.data).toBe('iVBORw0KGgo=');
+    expect(content[3]?.text).toContain('1 image(s)');
   });
 
   it('rejects invalid arguments without calling Moodle', async () => {

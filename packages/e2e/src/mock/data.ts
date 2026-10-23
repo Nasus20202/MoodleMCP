@@ -43,6 +43,12 @@ export const IDS = {
   discussion: 12,
   wiki: 4,
   cmidPage: 2002,
+  /** A long page with a table and a pasted picture, for the get_page tests. */
+  cmidBigPage: 2011,
+  glossary: 60,
+  lesson: 61,
+  choice: 62,
+  feedback: 63,
 } as const;
 
 /** Who is enrolled where: the mock refuses course data to everyone else, as Moodle does. */
@@ -111,6 +117,19 @@ export const FILES: Record<string, MockFile> = {
   '/webservice/pluginfile.php/303/mod_resource/content/1/syllabus.docx': {
     course: COURSE_ALG,
     body: tinyDocx('Syllabus', 'Week 1: sorting'),
+    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  },
+  '/webservice/pluginfile.php/317/mod_resource/content/1/schedule.docx': {
+    course: COURSE_ALG,
+    body: zipSync({
+      'word/document.xml': strToU8(
+        '<w:document><w:body>' +
+          '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Schedule</w:t></w:r></w:p>' +
+          '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Week</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Topic</w:t></w:r></w:p></w:tc></w:tr>' +
+          '<w:tr><w:tc><w:p><w:r><w:t>1</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Sorting</w:t></w:r></w:p></w:tc></w:tr></w:tbl>' +
+          '</w:body></w:document>',
+      ),
+    }),
     type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   },
   '/webservice/pluginfile.php/304/mod_resource/content/1/diagram.png': {
@@ -222,8 +241,24 @@ export interface CourseData {
   urls: unknown[];
   labels: unknown[];
   wikis: unknown[];
+  glossaries: unknown[];
+  lessons: unknown[];
+  choices: unknown[];
+  feedbacks: unknown[];
   events: unknown[];
 }
+
+/** One tiny pasted picture, as the Moodle editor leaves it in a page. */
+export const PASTED_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+/** A page that is long, styled the way the editor styles it, and holds a table and a pasted picture. */
+export const BIG_PAGE_HTML =
+  '<h2 style="color:#333;font-family:Arial">Sorting</h2>' +
+  '<p style="margin:0">Read the <a href="https://moodle.example.edu/2025/pluginfile.php/301/mod_resource/content/1/notes.txt">notes</a>.</p>' +
+  '<table><tr><th>Algorithm</th><th>Time</th></tr><tr><td>Quicksort</td><td>O(n log n)</td></tr></table>' +
+  `<p><img alt="Diagram" src="${PASTED_PNG}"></p>` +
+  `<p>${'Filler sentence. '.repeat(200)}</p>`;
 
 export const COURSE_DATA: Record<number, CourseData> = {
   [COURSE_ALG]: {
@@ -253,6 +288,12 @@ export const COURSE_DATA: Record<number, CourseData> = {
             modname: 'page',
             instance: 30,
           },
+          {
+            id: IDS.cmidBigPage,
+            name: 'Big page',
+            modname: 'page',
+            instance: 31,
+          },
         ],
       },
       { id: 2, name: 'Week 2: Searching', visible: 1, modules: [] },
@@ -279,6 +320,11 @@ export const COURSE_DATA: Record<number, CourseData> = {
         timelimit: 1800,
         attempts: 2,
         grade: 10,
+        intro: '<p>Be <b>quick</b>.</p>',
+        introformat: 1,
+        preferredbehaviour: 'deferredfeedback',
+        browsersecurity: '-',
+        overduehandling: 'autosubmit',
       },
     ],
     forums: [
@@ -307,6 +353,14 @@ export const COURSE_DATA: Record<number, CourseData> = {
           ),
         ],
       },
+      {
+        id: 31,
+        coursemodule: IDS.cmidBigPage,
+        course: COURSE_ALG,
+        name: 'Big page',
+        content: BIG_PAGE_HTML,
+        contentfiles: [],
+      },
     ],
     resources: [
       {
@@ -332,6 +386,10 @@ export const COURSE_DATA: Record<number, CourseData> = {
     wikis: [
       { id: IDS.wiki, coursemodule: 2006, course: COURSE_ALG, name: 'Class wiki', firstpagetitle: 'Home' },
     ],
+    glossaries: [{ id: IDS.glossary, coursemodule: 2007, course: COURSE_ALG, name: 'Terms' }],
+    lessons: [{ id: IDS.lesson, coursemodule: 2008, course: COURSE_ALG, name: 'Intro lesson' }],
+    choices: [{ id: IDS.choice, coursemodule: 2009, course: COURSE_ALG, name: 'Pick a topic' }],
+    feedbacks: [{ id: IDS.feedback, coursemodule: 2012, course: COURSE_ALG, name: 'Course survey' }],
     events: [
       {
         id: 900,
@@ -339,8 +397,26 @@ export const COURSE_DATA: Record<number, CourseData> = {
         modulename: 'assign',
         instance: IDS.assign,
         timestart: 1_762_000_000,
-        course: { id: COURSE_ALG },
-        action: { name: 'addsubmission', actionable: true },
+        description: '<p>Hand in <b>by Friday</b>.</p>',
+        descriptionformat: 1,
+        icon: { key: 'i/calendar', component: 'core', alttext: 'Event' },
+        formattedtime: '<a href="https://moodle.example.edu/2025/calendar/view.php">Saturday</a>',
+        editurl: 'https://moodle.example.edu/2025/calendar/event.php?action=edit&id=900',
+        deleteurl: 'https://moodle.example.edu/2025/calendar/delete.php?id=900',
+        course: {
+          id: COURSE_ALG,
+          fullname: 'Algorithms',
+          shortname: 'ALG',
+          summary: '<p>Long course text</p>',
+          startdate: 1,
+        },
+        action: {
+          name: 'addsubmission',
+          url: 'https://moodle.example.edu/2025/mod/assign/view.php?id=2001',
+          itemcount: 1,
+          actionable: true,
+          showitemcount: false,
+        },
       },
     ],
   },
@@ -354,6 +430,10 @@ export const COURSE_DATA: Record<number, CourseData> = {
     urls: [],
     labels: [],
     wikis: [],
+    glossaries: [],
+    lessons: [],
+    choices: [],
+    feedbacks: [],
     events: [],
   },
 };
@@ -395,7 +475,12 @@ export const POSTS = {
       id: 1202,
       discussionid: IDS.discussion,
       subject: 'Re: Exam date',
-      author: { fullname: 'Alice Anderson' },
+      author: {
+        fullname: 'Alice Anderson',
+        urls: { profileimage: 'https://moodle.example.edu/2025/pluginfile.php/5/user/icon/f1' },
+        profileimageurl: 'https://moodle.example.edu/2025/pluginfile.php/5/user/icon/f1',
+      },
+      messageformat: 1,
       message: '<p>Thank you!</p>',
       attachments: [],
     },
@@ -453,7 +538,10 @@ export const UPCOMING = {
       id: 900,
       name: 'Homework 1 is due',
       timestart: 1_762_000_000,
-      course: { id: COURSE_ALG, shortname: 'ALG' },
+      description: '<p>Hand in <b>by Friday</b>.</p>',
+      icon: { key: 'i/calendar', component: 'core' },
+      editurl: 'https://moodle.example.edu/2025/calendar/event.php?action=edit&id=900',
+      course: { id: COURSE_ALG, shortname: 'ALG', summary: '<p>Long course text</p>' },
     },
   ],
   daynames: [],
@@ -465,7 +553,19 @@ export const GRADE_ITEMS = {
     {
       courseid: COURSE_ALG,
       userid: ALICE.id,
-      gradeitems: [{ id: 1, itemname: 'Homework 1', gradeformatted: '8.50', percentageformatted: '85 %' }],
+      gradeitems: [
+        {
+          id: 1,
+          itemname: 'Homework 1',
+          gradeformatted: '8.50',
+          percentageformatted: '85 %',
+          feedback: '<p>Well <i>done</i></p>',
+          feedbackformat: 1,
+          gradeneedsupdate: false,
+          outputorigin: 'gradebook',
+          lowrange: 0,
+        },
+      ],
     },
   ],
   warnings: [],
@@ -481,7 +581,152 @@ export const COURSE_GRADES = {
 
 export const COMPLETION = {
   statuses: [
-    { cmid: IDS.cmidAssign, modname: 'assign', instance: IDS.assign, state: 1, timecompleted: 1_761_500_000 },
+    {
+      cmid: IDS.cmidAssign,
+      modname: 'assign',
+      instance: IDS.assign,
+      state: 1,
+      timecompleted: 1_761_500_000,
+      tracking: 2,
+      uservisible: true,
+      isautomatic: true,
+      details: [{ rulename: 'completionview', rulevalue: { status: 1, description: 'Done: View' } }],
+    },
   ],
   warnings: [],
 };
+
+export const GLOSSARY_ENTRIES = {
+  count: 1,
+  entries: [{ id: 1, glossaryid: IDS.glossary, concept: 'Big-O', definition: '<p>Growth rate.</p>' }],
+  warnings: [],
+};
+
+export const LESSON_PAGES = {
+  pages: [{ page: { id: 1, lessonid: IDS.lesson, title: 'Start', contents: '<p>Begin here.</p>' } }],
+  warnings: [],
+};
+
+export const CHOICE_RESULTS = {
+  options: [{ id: 1, text: 'Sorting', userresponses: [], numberofuser: 3, percentageamount: 75 }],
+  warnings: [],
+};
+
+export const FEEDBACK_ANALYSIS = {
+  completedcount: 5,
+  itemscount: 1,
+  itemsdata: [{ item: { id: 1, name: 'How was it?' }, data: ['4.2'] }],
+  warnings: [],
+};
+
+/** Someone who teaches the Algorithms course. */
+export const TEACHER = { id: 50, fullname: 'Dr. Grace Turing', email: 'g.turing@example.edu' } as const;
+
+const STUDENT_ROLE = { roleid: 5, name: 'Student', shortname: 'student', sortorder: 5 };
+const TEACHER_ROLE = { roleid: 3, name: 'Teacher', shortname: 'editingteacher', sortorder: 3 };
+const ASSISTANT_ROLE = { roleid: 4, name: 'Non-editing teacher', shortname: 'teacher', sortorder: 4 };
+
+/** What `core_enrol_get_enrolled_users` returns, with the fields the tool must not pass on. */
+export const ENROLLED_USERS: Record<number, unknown[]> = {
+  [COURSE_ALG]: [
+    {
+      ...TEACHER,
+      username: 'gturing',
+      lastaccess: 1_761_000_000,
+      profileimageurlsmall: 'https://moodle.example.edu/2025/pluginfile.php/5/user/icon/f2',
+      roles: [TEACHER_ROLE],
+    },
+    {
+      id: 51,
+      fullname: 'Dr. Ada Assistant',
+      email: 'a.assistant@example.edu',
+      lastaccess: 1_761_000_100,
+      roles: [ASSISTANT_ROLE],
+    },
+    { id: ALICE.id, fullname: ALICE.fullname, email: 'alice@example.edu', roles: [STUDENT_ROLE] },
+    { id: BOB.id, fullname: BOB.fullname, email: 'bob@example.edu', roles: [STUDENT_ROLE] },
+  ],
+  [COURSE_DB]: [
+    { id: ALICE.id, fullname: ALICE.fullname, email: 'alice@example.edu', roles: [STUDENT_ROLE] },
+  ],
+};
+
+/** What `core_user_get_users_by_field` returns for a user the signed-in user may see. */
+export const USER_PROFILES: Record<number, Record<string, unknown>> = {
+  [TEACHER.id]: {
+    ...TEACHER,
+    username: 'gturing',
+    phone1: '+48 123 456 789',
+    department: 'Computer Science',
+    institution: 'Example University',
+    city: 'Kraków',
+    country: 'PL',
+    description: '<p>Office hours: Monday 10:00.</p>',
+    lastaccess: 1_761_000_000,
+    profileimageurl: 'https://moodle.example.edu/2025/pluginfile.php/5/user/icon/f1',
+    preferences: [{ name: 'auth_forcepasswordchange', value: '0' }],
+  },
+};
+
+export const CONVERSATION_IDS = { withTeacher: 70, groupChat: 71, notAMember: 72 } as const;
+
+const MESSAGES = [
+  {
+    id: 903,
+    useridfrom: TEACHER.id,
+    text: '<p>Please send the draft by Friday.</p>',
+    timecreated: 1_761_300_000,
+  },
+  {
+    id: 902,
+    useridfrom: ALICE.id,
+    text: '<p>Hello, a question about homework 1.</p>',
+    timecreated: 1_761_200_000,
+  },
+  { id: 901, useridfrom: TEACHER.id, text: '<p>Welcome to the course.</p>', timecreated: 1_761_100_000 },
+];
+
+/** Which conversations exist, who is in them, and how many messages the signed-in member has not read. */
+export const CONVERSATIONS: Record<
+  number,
+  { name: string; type: number; unreadcount: number; members: number[]; messages: typeof MESSAGES }
+> = {
+  [CONVERSATION_IDS.withTeacher]: {
+    name: TEACHER.fullname,
+    type: 1,
+    unreadcount: 2,
+    members: [ALICE.id, TEACHER.id],
+    messages: MESSAGES,
+  },
+  [CONVERSATION_IDS.groupChat]: {
+    name: 'Study group',
+    type: 2,
+    unreadcount: 0,
+    members: [ALICE.id, BOB.id, 60],
+    messages: [{ id: 910, useridfrom: BOB.id, text: '<p>Library at 5?</p>', timecreated: 1_761_400_000 }],
+  },
+  [CONVERSATION_IDS.notAMember]: {
+    name: 'Private',
+    type: 1,
+    unreadcount: 0,
+    members: [BOB.id, 61],
+    messages: [{ id: 920, useridfrom: 61, text: '<p>SECRET</p>', timecreated: 1_761_500_000 }],
+  },
+};
+
+const NAMES: Record<number, string> = {
+  [ALICE.id]: ALICE.fullname,
+  [BOB.id]: BOB.fullname,
+  [TEACHER.id]: TEACHER.fullname,
+  60: 'Carol Clark',
+  61: 'Dan Doe',
+};
+
+/** A conversation member the way Moodle lists one, with fields the tool must not pass on. */
+export const memberOf = (id: number) => ({
+  id,
+  fullname: NAMES[id] ?? `User ${id}`,
+  profileimageurl: `https://moodle.example.edu/2025/pluginfile.php/${id}/user/icon/f1`,
+  isonline: true,
+  isblocked: false,
+});

@@ -32,16 +32,18 @@ clients.
 All tools are read-only. `GET /api/tools` lists them with their arguments, and each description tells the agent which
 tool to call next and where its ids come from.
 
-| Area      | Tools                                                                                                       |
-| --------- | ----------------------------------------------------------------------------------------------------------- |
-| Site      | `get_site_info`                                                                                             |
-| Courses   | `list_courses`, `search_courses`, `get_course_contents`, `get_course_module`                                |
-| Materials | `read_file`, `list_resources`, `list_pages`, `list_labels`, `list_urls`, `list_wikis`, `get_wiki_pages`     |
-| Work      | `list_assignments`, `get_submission_status`, `list_quizzes`, `get_quiz_attempts`, `get_quiz_attempt_review` |
-| Calendar  | `get_upcoming_events`, `get_course_events`, `get_course_completion`                                         |
-| Grades    | `get_grades`, `get_grades_overview`                                                                         |
-| Forums    | `list_forums`, `list_forum_discussions`, `get_forum_posts`                                                  |
-| Activity  | `get_notifications`                                                                                         |
+| Area      | Tools                                                                                                                                                                 |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Site      | `get_site_info`                                                                                                                                                       |
+| Courses   | `list_courses`, `search_courses`, `get_course_contents`, `get_course_module`                                                                                          |
+| Materials | `read_file`, `list_activities`, `get_page`, `list_wikis`, `get_wiki_pages`, `get_glossary_entries`, `get_lesson_pages`, `get_choice_results`, `get_feedback_analysis` |
+| Work      | `list_assignments`, `get_submission_status`, `list_quizzes`, `get_quiz_attempts`, `get_quiz_attempt_review`                                                           |
+| Calendar  | `get_upcoming_events`, `get_course_events`, `get_course_completion`                                                                                                   |
+| Grades    | `get_grades`, `get_grades_overview`                                                                                                                                   |
+| Forums    | `list_forums`, `list_forum_discussions`, `get_forum_posts`                                                                                                            |
+| People    | `get_course_participants`, `get_user_profile`                                                                                                                         |
+| Messages  | `list_conversations`, `get_conversation_messages`                                                                                                                     |
+| Activity  | `get_notifications`                                                                                                                                                   |
 
 `read_file` takes a `fileurl` from another tool and returns text for PDF (text layer only), DOCX, PPTX, XLSX, LibreOffice (ODT, ODS, ODP), HTML and
 plain text; images come back as images. A ZIP archive comes back as a list of its files, and passing one of their paths
@@ -49,16 +51,45 @@ as `entry` reads that file like any other (archives inside archives are not open
 and its name do not give is identified from its content (a few magic numbers, or valid UTF-8 text). Files up to 20 MB, paged with
 `offset` and `next_offset`. The URL must be on the Moodle site; redirects are not followed. Its `mode` picks how a file is read:
 
-| Mode       | What it does                                                                                                 |
-| ---------- | ------------------------------------------------------------------------------------------------------------ |
-| `auto`     | default: `markdown` for PDF, DOCX, XLSX and HTML when the AI binding is there, `extract` for everything else |
-| `markdown` | Workers AI [`toMarkdown`][tomarkdown]: no Worker CPU, keeps headings and tables; an image gets a description |
-| `extract`  | the Worker's own parsers; PDFs are read only as far as each call goes (at most 20 pages) and take a `page`   |
-| `resource` | the unmodified file: an image, audio or embedded resource block by type                                      |
+| Mode       | What it does                                                                                                                                                                                                                                   |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auto`     | default: `markdown` for PDF, DOCX and XLSX when the AI binding is there; `extract` for everything else, HTML included (the Worker's own HTML-to-Markdown converter)                                                                            |
+| `markdown` | Workers AI [`toMarkdown`][tomarkdown]: no Worker CPU, keeps headings and tables; an image gets a description                                                                                                                                   |
+| `extract`  | the Worker's own parsers; PDFs are read only as far as each call goes (at most 20 pages) and take a `page`. Word keeps headings, lists, bold and tables, Excel becomes one Markdown table per sheet with dates as dates, HTML becomes Markdown |
+| `resource` | the unmodified file: an image, audio or embedded resource block by type                                                                                                                                                                        |
 
 If a conversion fails (or the daily Workers AI allowance runs out), `read_file` falls back to `extract` and says so.
 Images are only described when `markdown` is asked for, because a description is a summary and uses the allowance;
 images inside documents are never converted. With `markdown`, files are sent to Workers AI for conversion.
+
+`list_activities` lists one kind of activity of a course: `resource`, `page`, `url`, `label`, `glossary`, `lesson`,
+`choice` or `feedback`. Pages are listed without their bodies (name, ids and size), because a course can hold hundreds
+of kilobytes of them; `get_page` reads one by the course-module id (the `id` in a Moodle link). Its `format` works like
+`read_file`'s `mode`: `auto` (default) and `extract` are Markdown from the Worker's own HTML-to-Markdown converter
+(headings, lists, links and tables; no styles or scripts), `markdown` asks Workers AI instead (falling back to the
+converter when it is missing or fails), and `raw` is the HTML. The converter is the default for HTML because it is
+deterministic, free, and cleaner than Workers AI on Moodle's editor markup, and it marks where each pasted picture
+sat. Long pages are paged with `offset` and
+`next_offset`; pictures come back as image blocks. `get_glossary_entries`, `get_lesson_pages`, `get_choice_results`
+and `get_feedback_analysis` read the matching activity types; none of them starts an attempt or records a view.
+
+`get_course_participants` lists who is enrolled (`role`: all, teachers or students), `get_user_profile` shows one
+person's contact details, and `list_conversations` and `get_conversation_messages` read the signed-in user's own
+private and group messages. These use only Moodle functions that read: reading does not mark messages as read, tell
+the sender, or record a profile view, and the server never logs names, addresses or message text (only sizes). They
+are exactly as visible as in the Moodle app for that user: Moodle decides what the token may see, and it still records
+the web service request itself, like any other call, in its own logs.
+
+**What a tool returns.** Most tools relay Moodle's JSON after a shared cleanup: fields that say nothing are dropped
+(`null`, empty strings and objects, empty `warnings`, text-format flags, people's picture links, AI-tool flags,
+icons; an empty list, zero and false stay), scripts and styles are removed from HTML, multi-language text is resolved to the user's language, and pictures
+pasted into HTML come back as image blocks. A few tools shape their answer for a reader instead:
+`get_course_contents` is a Markdown outline (section headings, one line per activity with its `cmid` and `instance`,
+files and links under it, labels with their text), `get_page` and `read_file` return Markdown, and these keep
+the fields that answer the question and write HTML texts (intros, descriptions, feedback) as short Markdown:
+`list_activities`, `list_quizzes`, `get_course_events`, `get_upcoming_events`, `get_grades` and
+`get_course_completion`. Any result over 80,000 characters is cut with a `truncated` marker that
+says how much there was, so a client never has to cut it silently.
 
 [tomarkdown]: https://developers.cloudflare.com/workers-ai/features/markdown-conversion/
 

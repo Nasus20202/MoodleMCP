@@ -65,6 +65,11 @@ describe('read_file against a mock Moodle file server', () => {
     expect(json().note).toContain('past the end');
   });
 
+  it('keeps the headings and tables of a Word document', async () => {
+    const { json } = await read(fileUrl('schedule.docx', 317));
+    expect(json().text).toBe('# Schedule\n\n| Week | Topic |\n| --- | --- |\n| 1 | Sorting |');
+  });
+
   it('extracts paragraphs from a Word document', async () => {
     const { json } = await read(fileUrl('syllabus.docx', 303));
     expect(json().text).toBe('Syllabus\nWeek 1: sorting');
@@ -267,15 +272,20 @@ describe('read_file with Workers AI bound', () => {
     expect(logs.find((l) => l.msg === 'file converted')).toMatchObject({ format: 'pdf', tokens: 11 });
   });
 
-  it('converts Word documents and HTML', async () => {
+  it('converts Word documents with Workers AI and HTML with our own converter', async () => {
     expect((await read(fileUrl('syllabus.docx', 303))).json()).toMatchObject({
       mode: 'markdown',
       text: 'Syllabus\nWeek 1: sorting',
     });
+    // HTML is converted by our own converter, so only the Word document went to Workers AI.
     expect((await read(fileUrl('page.html', 306))).json()).toMatchObject({
       format: 'html',
-      mode: 'markdown',
+      mode: 'extract',
+      text: expect.stringContaining('# Welcome') as unknown,
     });
+    expect(world.ai.calls.map((c) => c.type)).toEqual([
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ]);
   });
 
   it('returns images as images, and describes one only when markdown is asked for', async () => {

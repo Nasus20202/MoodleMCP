@@ -54,7 +54,7 @@ describe('read_file', () => {
     const html = '<p>See</p><img alt="fig" src="data:image/png;base64,iVBORw==">';
     const { body } = await readFile(serve(html, 'text/html'));
     const content = body.result?.content ?? [];
-    expect(JSON.parse(content[0]?.text ?? '')).toMatchObject({ readable: true, text: 'See' });
+    expect(JSON.parse(content[0]?.text ?? '')).toMatchObject({ readable: true, text: 'See\n\n[image: fig]' });
     expect(content[1]).toEqual({ type: 'image', data: 'iVBORw==', mimeType: 'image/png' });
     expect(content[2]?.text).toContain('1 image(s) embedded');
   });
@@ -322,7 +322,6 @@ describe('read_file', () => {
       ['application/pdf', 'pdf'],
       ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'docx'],
       ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'xlsx'],
-      ['text/html', 'html'],
     ])('converts %s by default, without converting embedded images', async (type, format) => {
       const { json, calls } = await readWith(serve('file body', type));
       expect(json()).toMatchObject({ format, mode: 'markdown', text: '# notes.txt', next_offset: null });
@@ -419,9 +418,19 @@ describe('read_file', () => {
       expect(String(json().note)).toContain('not set up');
     });
 
+    it('converts HTML with our own converter by default, never calling Workers AI', async () => {
+      const { json, calls } = await readWith(serve('<h1>Title</h1><p>Hi <b>there</b></p>', 'text/html'));
+      expect(json()).toMatchObject({ format: 'html', mode: 'extract', text: '# Title\n\nHi **there**' });
+      expect(calls).toEqual([]);
+    });
+
     it('falls back to extraction when the conversion fails, logging no details of the file', async () => {
       const markdown = fakeMarkdown(() => new Error('notes.txt: daily neuron limit exceeded'));
-      const { json, logs } = await readWith(serve('<p>Hello</p>', 'text/html'), {}, markdown);
+      const { json, logs } = await readWith(
+        serve('<p>Hello</p>', 'text/html'),
+        { mode: 'markdown' },
+        markdown,
+      );
       expect(json()).toMatchObject({ mode: 'extract', text: 'Hello' });
       expect(String(json().note)).toContain('Markdown conversion failed');
       expect(logLines(logs).find((l) => l.msg === 'markdown conversion failed')).toMatchObject({
@@ -441,7 +450,11 @@ describe('read_file', () => {
       'says why the conversion failed (%s), without the converter message',
       async (message, reason, hint) => {
         const markdown = fakeMarkdown(() => new Error(message));
-        const { json, logs } = await readWith(serve('<p>Hello</p>', 'text/html'), {}, markdown);
+        const { json, logs } = await readWith(
+          serve('<p>Hello</p>', 'text/html'),
+          { mode: 'markdown' },
+          markdown,
+        );
         expect(json()).toMatchObject({ mode: 'extract', text: 'Hello' });
         expect(String(json().note)).toContain(hint);
         expect(logLines(logs).find((l) => l.msg === 'markdown conversion failed')).toMatchObject({ reason });

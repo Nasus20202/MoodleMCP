@@ -6,7 +6,7 @@ import type { Logger } from '../logger.ts';
 import type { MoodleClient, Params } from '../moodle/client.ts';
 import type { MoodleFunction } from '../moodle/functions.ts';
 import type { ToolName } from './names.ts';
-import { tidyToJson } from './tidy.ts';
+import { slimMoodle, tidyToJson } from './tidy.ts';
 
 /** One block of a tool result, as MCP clients receive it. */
 export type ToolContent =
@@ -62,21 +62,60 @@ export function defineTool<Schema extends z.ZodObject>(spec: ToolSpec<Schema>): 
     input: spec.input,
     async run({ client }, input) {
       const result = await client.call(spec.fn, await spec.params(input, client));
-      const shaped = spec.shape ? spec.shape(result) : result;
-      const { value, images, skipped } = extractEmbeddedImages(shaped);
-      const text = await tidyToJson(value, () => client.lang());
-      if (images.length === 0 && skipped === 0) return [{ type: 'text', text }];
-      return [
-        { type: 'text', text },
-        ...images.map((image): ToolContent => ({
-          type: 'image',
-          data: image.base64,
-          mimeType: image.mimeType,
-        })),
-        ...jsonContent({ note: imageNote(images.length, skipped) }),
-      ];
+      return renderResult(client, slimMoodle(spec.shape ? spec.shape(result) : result));
     },
   });
+}
+
+/**
+ * The most characters of JSON a tool returns. Clients cut a tool result at about 25,000 tokens (roughly 100,000
+ * characters), and a cut they make leaves the model without a word about what is missing.
+ */
+export const MAX_RESULT_CHARS = 80_000;
+
+/**
+ * A result longer than {@link MAX_RESULT_CHARS}, cut there, saying so and how to ask for less. The cut text sits
+ * inside a JSON string, where quotes and backslashes take two characters, so it is sized to fit once escaped.
+ */
+export function limitResult(text: string): string {
+  if (text.length <= MAX_RESULT_CHARS) return text;
+  const wrap = (shown: number) =>
+    JSON.stringify({
+      truncated: true,
+      total_chars: text.length,
+      shown_chars: shown,
+      note:
+        'This result is longer than a client can usually take, so only its beginning is shown (`partial`, cut ' +
+        "mid-way). Ask for something narrower: another tool for one kind of activity or one activity, or the tool's " +
+        'offset and limit when it has them.',
+      partial: text.slice(0, shown),
+    });
+  let shown = MAX_RESULT_CHARS - 500;
+  let out = wrap(shown);
+  while (out.length > MAX_RESULT_CHARS) {
+    shown -= out.length - MAX_RESULT_CHARS + 100;
+    out = wrap(shown);
+  }
+  return out;
+}
+
+/**
+ * Turns a Moodle result into content blocks: tidied JSON, then the pictures pasted into its HTML as image
+ * blocks, each marked `data-image="N"` where it sat, and a line saying so.
+ */
+export async function renderResult(client: MoodleClient, shaped: unknown): Promise<ToolContent[]> {
+  const { value, images, skipped } = extractEmbeddedImages(shaped);
+  const text = limitResult(await tidyToJson(value, () => client.lang()));
+  if (images.length === 0 && skipped === 0) return [{ type: 'text', text }];
+  return [
+    { type: 'text', text },
+    ...images.map((image): ToolContent => ({
+      type: 'image',
+      data: image.base64,
+      mimeType: image.mimeType,
+    })),
+    ...jsonContent({ note: imageNote(images.length, skipped) }),
+  ];
 }
 
 interface CustomToolSpec<Schema extends z.ZodObject> {
