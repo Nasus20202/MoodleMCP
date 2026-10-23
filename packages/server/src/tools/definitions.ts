@@ -11,9 +11,8 @@ import {
   getUserProfileTool,
   listConversationsTool,
 } from './people.ts';
-import { pickCompletion, pickEvents, pickGrades, pickQuizzes } from './pick.ts';
+import { pickCompletion, pickEvents, pickGrades, pickQuizzes, pickSiteInfo } from './pick.ts';
 import { readFileTool } from './read-file.ts';
-import { pickSiteInfo } from './tidy.ts';
 
 const id = (describe: string) => z.number().int().positive().describe(describe);
 const courseId = id('Moodle course id: the `id` of a course from list_courses or search_courses');

@@ -8,6 +8,7 @@ import {
   pickEvents,
   pickGrades,
   pickQuizzes,
+  pickSiteInfo,
   shortMarkdown,
   withBriefIntro,
 } from './pick.ts';
@@ -241,5 +242,23 @@ describe('describeItem', () => {
     expect(describeItem({ id: 1 })).toEqual({ id: 1 });
     const long = describeItem({ intro: `<p>${'word '.repeat(600)}</p>` }) as { intro: string };
     expect(long.intro).toHaveLength(1501);
+  });
+});
+
+describe('pickSiteInfo', () => {
+  it('keeps the identity fields and drops the private key and function list', () => {
+    const out = pickSiteInfo({
+      sitename: 'S',
+      userid: 3,
+      userprivateaccesskey: 'secret',
+      functions: [{ name: 'f' }],
+    });
+    expect(out).toEqual({ sitename: 'S', userid: 3 });
+  });
+
+  it('passes anything that is not a record through unchanged', () => {
+    expect(pickSiteInfo(null)).toBeNull();
+    expect(pickSiteInfo('text')).toBe('text');
+    expect(pickSiteInfo([1])).toEqual([1]);
   });
 });

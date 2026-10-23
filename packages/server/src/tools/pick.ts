@@ -66,6 +66,23 @@ export function describeItem(item: unknown): unknown {
   return withBriefIntro(described, 1500);
 }
 
+/** The fields of `core_webservice_get_site_info` worth showing; it also holds a private key and ~480 function names. */
+const SITE_INFO_FIELDS = [
+  'sitename',
+  'siteurl',
+  'username',
+  'firstname',
+  'lastname',
+  'fullname',
+  'lang',
+  'userid',
+  'release',
+  'version',
+] as const;
+
+export const pickSiteInfo = (info: unknown): unknown =>
+  isFields(info) ? pick(info, SITE_INFO_FIELDS) : info;
+
 const QUIZ_FIELDS = [
   'id',
   'coursemodule',

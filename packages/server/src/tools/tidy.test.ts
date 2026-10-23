@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { pickSiteInfo, resolveMlang, slimMoodle, stripHtmlBloat, tidyToJson } from './tidy.ts';
+import { resolveMlang, slimMoodle, stripHtmlBloat, tidyToJson } from './tidy.ts';
 
 describe('stripHtmlBloat', () => {
   it('removes scripts, styles, svg and embedded images but keeps the text', () => {
@@ -53,18 +53,6 @@ describe('tidyToJson', () => {
     });
     expect(json).toBe('[{"id":1}]');
     expect(asked).toBe(0);
-  });
-});
-
-describe('pickSiteInfo', () => {
-  it('keeps the identity fields and drops the private key and function list', () => {
-    const out = pickSiteInfo({
-      sitename: 'S',
-      userid: 3,
-      userprivateaccesskey: 'secret',
-      functions: [{ name: 'f' }],
-    });
-    expect(out).toEqual({ sitename: 'S', userid: 3 });
   });
 });
 

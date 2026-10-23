@@ -118,23 +118,3 @@ export async function tidyToJson(value: unknown, lang: () => Promise<string>): P
   const wanted = await lang();
   return JSON.stringify(mapStrings(JSON.parse(text), (t) => resolveMlang(t, wanted)));
 }
-
-/** The fields of `core_webservice_get_site_info` worth showing; it also holds a private key and ~480 function names. */
-const SITE_INFO_FIELDS = [
-  'sitename',
-  'siteurl',
-  'username',
-  'firstname',
-  'lastname',
-  'fullname',
-  'lang',
-  'userid',
-  'release',
-  'version',
-] as const;
-
-export function pickSiteInfo(info: unknown): unknown {
-  if (typeof info !== 'object' || info === null) return info;
-  const source = info as Record<string, unknown>;
-  return Object.fromEntries(SITE_INFO_FIELDS.filter((f) => f in source).map((f) => [f, source[f]]));
-}
