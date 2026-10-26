@@ -103,11 +103,11 @@ jobs:
       # Fail when the CLI is missing instead of skipping its rows.
       E2E_REQUIRE_CLIENTS: '1'
       # renovate: datasource=npm depName=@anthropic-ai/claude-code
-      CLAUDE_CODE_VERSION: 2.1.308
+      CLAUDE_CODE_VERSION: 2.1.310
       # renovate: datasource=npm depName=@openai/codex
-      CODEX_VERSION: 0.163.0
+      CODEX_VERSION: 0.164.0
       # renovate: datasource=npm depName=@opencode/cli
-      OPENCODE_VERSION: 2.1.3
+      OPENCODE_VERSION: 2.1.4
     steps:
       - name: Check out the repository
         uses: actions/checkout@v7
