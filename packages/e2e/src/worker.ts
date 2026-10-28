@@ -63,7 +63,8 @@ export async function startWorker(options: WorkerOptions): Promise<RunningWorker
             LOG_LEVEL: 'debug',
             ...options.env,
           },
-          outboundService: (request) => options.network.fetch(request),
+          // @types/node 26 adds `textStream` to the global Request type, which miniflare's Request lacks.
+          outboundService: (request) => options.network.fetch(request as never),
           ...(ai && { serviceBindings: { AI: { name: 'workers-ai', entrypoint: 'Ai' } } }),
         },
         ...(ai
