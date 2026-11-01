@@ -24,7 +24,16 @@ describe('readFile', () => {
     const result = await read(file('a.pdf', tinyPdf('Hello PDF'), 'application/pdf'));
     expect(result).toEqual({
       kind: 'pdf',
-      chunk: { text: '--- Page 1 ---\nHello PDF', pages: 1, firstPage: 1, lastPage: 1, next: null },
+      chunk: {
+        text: '--- Page 1 ---\nHello PDF',
+        pages: 1,
+        firstPage: 1,
+        lastPage: 1,
+        next: null,
+        images: [],
+        skippedImages: 0,
+        moreImages: false,
+      },
     });
   });
 

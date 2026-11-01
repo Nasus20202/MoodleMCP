@@ -25,13 +25,15 @@ export interface ModeContext {
   canConvert: boolean;
   /** The requested PDF page; jumping to a page needs extraction. */
   page: number;
+  /** Whether the caller asked for the pictures too; extracting them needs our own parser. */
+  images: boolean;
 }
 
 /** Picks between markdown and extraction for a file that is not returned as a resource. */
 export function chooseMode(
   requested: Exclude<ReadMode, typeof ReadMode.Resource>,
   kind: Kind,
-  { canConvert, page }: ModeContext,
+  { canConvert, page, images }: ModeContext,
 ): ModeChoice {
   const extract = (note?: string): ModeChoice => ({ mode: ReadMode.Extract, note });
   switch (requested) {
@@ -45,6 +47,8 @@ export function chooseMode(
       }
       return { mode: ReadMode.Markdown };
     case ReadMode.Auto:
+      // Pictures of a PDF can only be returned as image blocks by our parser; the converter would describe them.
+      if (images && kind === 'pdf') return extract();
       // HTML is converted by our own converter: it is deterministic, free, and cleaner than Workers AI on
       // Moodle's editor markup (stray emphasis markers, empty headings).
       return canConvert && MARKDOWN_KINDS.has(kind) && kind !== 'html' && !(kind === 'pdf' && page > 1)

@@ -31,9 +31,17 @@ describe('toMarkdown', () => {
 
   it('gives up on a conversion that does not answer in time', async () => {
     const stalled: MarkdownConverter = { toMarkdown: () => new Promise(() => undefined) };
-    await expect(toMarkdown(stalled, file, 'application/pdf', 10)).rejects.toMatchObject({
+    await expect(toMarkdown(stalled, file, 'application/pdf', { timeoutMs: 10 })).rejects.toMatchObject({
       name: 'MarkdownTimeoutError',
     });
+  });
+
+  it('describes images only when asked', async () => {
+    const { converter, calls } = fakeMarkdown();
+    await toMarkdown(converter, file, 'application/pdf');
+    await toMarkdown(converter, file, 'application/pdf', { images: true });
+    expect(calls[0]?.options?.conversionOptions?.pdf?.images?.convert).toBe(false);
+    expect(calls[1]?.options?.conversionOptions?.pdf?.images?.convert).toBe(true);
   });
 
   it('leaves the fallback time to run inside a minute, the point where MCP clients give up', () => {
@@ -45,7 +53,7 @@ describe('toMarkdown', () => {
     const lateFailure: MarkdownConverter = {
       toMarkdown: () => new Promise((_, reject) => setTimeout(() => reject(new Error('too late')), 30)),
     };
-    await expect(toMarkdown(lateFailure, file, 'application/pdf', 5)).rejects.toMatchObject({
+    await expect(toMarkdown(lateFailure, file, 'application/pdf', { timeoutMs: 5 })).rejects.toMatchObject({
       name: 'MarkdownTimeoutError',
     });
     // Vitest fails the run on an unhandled rejection, so waiting past the late failure is the assertion.

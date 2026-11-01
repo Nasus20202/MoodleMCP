@@ -90,3 +90,32 @@ export function tinyPdf(text: string): Uint8Array {
     ].join('\n'),
   );
 }
+
+/** A one-page PDF painted with a solid image and, optionally, a line of text; no text layer without one. */
+export function imagePdf(
+  width = 100,
+  height = 80,
+  text = '',
+  drawnWidth = width,
+  drawnHeight = height,
+): Uint8Array {
+  const pixels = new Uint8Array(width * height * 3).fill(128);
+  const drawing = `q ${drawnWidth} 0 0 ${drawnHeight} 72 650 cm /Im0 Do Q`;
+  const stream = text ? `BT /F1 12 Tf 72 700 Td (${text}) Tj ET\n${drawing}` : drawing;
+  return new Uint8Array([
+    ...new TextEncoder().encode(
+      [
+        '%PDF-1.4',
+        '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj',
+        '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj',
+        '3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 6 0 R>>/XObject<</Im0 5 0 R>>>>>>endobj',
+        `4 0 obj<</Length ${stream.length}>>stream\n${stream}\nendstream endobj`,
+        `5 0 obj<</Type/XObject/Subtype/Image/Width ${width}/Height ${height}/ColorSpace/DeviceRGB/BitsPerComponent 8/Length ${pixels.length}>>stream\n`,
+      ].join('\n'),
+    ),
+    ...pixels,
+    ...new TextEncoder().encode(
+      '\nendstream endobj\n6 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R/Size 7>>\n%%EOF',
+    ),
+  ]);
+}

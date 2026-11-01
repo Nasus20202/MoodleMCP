@@ -2,7 +2,7 @@ import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 
 import { callTool, setup } from '../app-test-utils.ts';
-import { fakeMarkdown, type RecordedCall, TEST_SITE, testConfig, tinyPdf } from '../test-utils.ts';
+import { fakeMarkdown, imagePdf, type RecordedCall, TEST_SITE, testConfig, tinyPdf } from '../test-utils.ts';
 import { ToolName } from './names.ts';
 
 describe('read_file', () => {
@@ -263,6 +263,25 @@ describe('read_file', () => {
     });
     expect(typeof line?.ms).toBe('number');
     expect(logs.join('\n')).not.toContain('Hello PDF');
+  });
+
+  it('attaches the picture of a PDF page with no text layer when asked', async () => {
+    const { body, json, logs } = await readFile(serve(imagePdf(), 'application/pdf'), { images: true });
+    expect(json()).toMatchObject({ format: 'pdf', text: '--- Page 1 ---' });
+    expect(String(json().note)).toContain('1 image(s) from page(s) 1 are attached');
+    expect(body.result?.content?.[1]).toMatchObject({ type: 'image', mimeType: 'image/png' });
+    expect(logLines(logs).find((l) => l.msg === 'file parsed')).toMatchObject({
+      format: 'pdf',
+      images: 1,
+      imagesSkipped: 0,
+    });
+  });
+
+  it('leaves PDF pictures out unless the caller asks for them', async () => {
+    const { body, json } = await readFile(serve(imagePdf(), 'application/pdf'));
+    expect(json()).toMatchObject({ format: 'pdf', text: '--- Page 1 ---' });
+    expect(body.result?.content).toHaveLength(1);
+    expect(String(json().note)).toContain('No text found');
   });
 
   it('logs an image it returns', async () => {

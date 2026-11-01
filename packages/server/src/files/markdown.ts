@@ -18,15 +18,17 @@ export const MARKDOWN_KINDS: ReadonlySet<Kind> = new Set(['pdf', 'docx', 'xlsx',
  */
 export const DESCRIBED_KINDS: ReadonlySet<Kind> = new Set(['image']);
 
-const NO_IMAGES = { convert: false };
-
-const OPTIONS: ConversionRequestOptions = {
+/**
+ * What to convert. Images are described by a model rather than transcribed, which is a summary and spends the
+ * account's daily Workers AI allowance, so only a caller that asks for them gets descriptions.
+ */
+const optionsFor = (images: boolean): ConversionRequestOptions => ({
   conversionOptions: {
-    pdf: { metadata: false, images: NO_IMAGES },
-    docx: { images: NO_IMAGES },
-    html: { images: { ...NO_IMAGES, convertOGImage: false } },
+    pdf: { metadata: false, images: { convert: images } },
+    docx: { images: { convert: images } },
+    html: { images: { convert: images, convertOGImage: false } },
   },
-};
+});
 
 /**
  * How long to wait for a conversion before extracting the text ourselves. Converting a large file or describing
@@ -95,12 +97,19 @@ export interface Markdown {
   tokens: number;
 }
 
+export interface MarkdownRequest {
+  /** How long to wait for the conversion before extracting the text ourselves. */
+  timeoutMs?: number;
+  /** Have Workers AI describe the document's images too (spends the daily allowance). */
+  images?: boolean;
+}
+
 /** The file's Markdown. `mimeType` is the effective type, since Moodle often sends octet-stream. */
 export async function toMarkdown(
   converter: MarkdownConverter,
   file: Pick<DownloadedFile, 'bytes' | 'filename'>,
   mimeType: string,
-  timeoutMs = CONVERSION_TIMEOUT_MS,
+  { timeoutMs = CONVERSION_TIMEOUT_MS, images = false }: MarkdownRequest = {},
 ): Promise<Markdown> {
   let timer: ReturnType<typeof setTimeout> | null = null;
   const timeout = new Promise<never>((_, reject) => {
@@ -109,7 +118,7 @@ export async function toMarkdown(
   try {
     const conversion = converter.toMarkdown(
       { name: file.filename, blob: new Blob([file.bytes], { type: mimeType }) },
-      OPTIONS,
+      optionsFor(images),
     );
     // When the timeout wins the race, nobody awaits the conversion any more: a later failure would surface as an
     // unhandled rejection, so it is swallowed here (the timeout is what gets reported).

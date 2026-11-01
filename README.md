@@ -45,18 +45,21 @@ tool to call next and where its ids come from.
 | Messages  | `list_conversations`, `get_conversation_messages`                                                                                                                     |
 | Activity  | `get_notifications`                                                                                                                                                   |
 
-`read_file` takes a `fileurl` from another tool and returns text for PDF (text layer only), DOCX, PPTX, XLSX, LibreOffice (ODT, ODS, ODP), HTML and
-plain text; images come back as images. A ZIP archive comes back as a list of its files, and passing one of their paths
+`read_file` takes a `fileurl` from another tool and returns text for PDF, DOCX, PPTX, XLSX, LibreOffice (ODT, ODS, ODP), HTML and
+plain text; images come back as images. With `images: true`, the pictures painted on a PDF's pages (scans, photographs,
+figures on slides) are attached after the text, up to 10 per call; in `markdown` mode Workers AI describes them
+instead (which spends the daily allowance), and vector drawings are not images.
+A ZIP archive comes back as a list of its files, and passing one of their paths
 as `entry` reads that file like any other (archives inside archives are not opened). A file whose type the server
 and its name do not give is identified from its content (a few magic numbers, or valid UTF-8 text). Files up to 20 MB, paged with
 `offset` and `next_offset`. The URL must be on the Moodle site; redirects are not followed. Its `mode` picks how a file is read:
 
-| Mode       | What it does                                                                                                                                                                                                                                   |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `auto`     | default: `markdown` for PDF, DOCX and XLSX when the AI binding is there; `extract` for everything else, HTML included (the Worker's own HTML-to-Markdown converter)                                                                            |
-| `markdown` | Workers AI [`toMarkdown`][tomarkdown]: no Worker CPU, keeps headings and tables; an image gets a description                                                                                                                                   |
-| `extract`  | the Worker's own parsers; PDFs are read only as far as each call goes (at most 20 pages) and take a `page`. Word keeps headings, lists, bold and tables, Excel becomes one Markdown table per sheet with dates as dates, HTML becomes Markdown |
-| `resource` | the unmodified file: an image, audio or embedded resource block by type                                                                                                                                                                        |
+| Mode       | What it does                                                                                                                                                                                                                                                                                                                                      |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auto`     | default: `markdown` for PDF, DOCX and XLSX when the AI binding is there; `extract` for everything else, HTML included (the Worker's own HTML-to-Markdown converter); a PDF with `images: true` is extracted, so its pictures come back as images                                                                                                  |
+| `markdown` | Workers AI [`toMarkdown`][tomarkdown]: no Worker CPU, keeps headings and tables; with `images: true` its images are described too (spends the allowance)                                                                                                                                                                                          |
+| `extract`  | the Worker's own parsers; PDFs are read only as far as each call goes (at most 20 pages) and take a `page`; with `images: true` the pictures painted on those pages come back as images (at most 10 per call). Word keeps headings, lists, bold and tables, Excel becomes one Markdown table per sheet with dates as dates, HTML becomes Markdown |
+| `resource` | the unmodified file: an image, audio or embedded resource block by type                                                                                                                                                                                                                                                                           |
 
 If a conversion fails (or the daily Workers AI allowance runs out), `read_file` falls back to `extract` and says so.
 Images are only described when `markdown` is asked for, because a description is a summary and uses the allowance;
