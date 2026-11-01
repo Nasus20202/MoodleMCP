@@ -1,7 +1,8 @@
 import { strToU8 } from 'fflate';
 import { describe, expect, it } from 'vitest';
 
-import { MAX_PAGES_PER_CALL, readPdf } from './pdf.ts';
+import { imagePdf } from '../test-utils.ts';
+import { MAX_IMAGE_PAGES_PER_CALL, MAX_PAGES_PER_CALL, readPdf } from './pdf.ts';
 
 /** A PDF with one line of text per page, written by hand (pdf.js rebuilds the missing xref table). */
 function pdfOf(pages: readonly string[]): Uint8Array {
@@ -34,6 +35,9 @@ describe('readPdf', () => {
       firstPage: 1,
       lastPage: 5,
       next: null,
+      images: [],
+      skippedImages: 0,
+      moreImages: false,
     });
   });
 
@@ -69,6 +73,9 @@ describe('readPdf', () => {
       firstPage: 5,
       lastPage: 5,
       next: null,
+      images: [],
+      skippedImages: 0,
+      moreImages: false,
     });
   });
 
@@ -77,6 +84,9 @@ describe('readPdf', () => {
       text: '',
       pages: 5,
       next: null,
+      images: [],
+      skippedImages: 0,
+      moreImages: false,
     });
   });
 
@@ -85,12 +95,55 @@ describe('readPdf', () => {
     expect(chunk.text).toBe('--- Page 1 ---\n\n--- Page 2 ---\nTwo');
   });
 
+  it('returns the pictures of a page that has no text layer', async () => {
+    const chunk = await readPdf(imagePdf(), { page: 1, offset: 0, maxChars: 1000, images: true });
+    expect(chunk.text).toBe('--- Page 1 ---');
+    expect(chunk.firstPage).toBe(1);
+    expect(chunk.images).toHaveLength(1);
+    expect(chunk.images[0]).toMatchObject({ width: 100, height: 80, page: 1 });
+    expect(chunk.images[0]?.base64.slice(0, 8)).toBe('iVBORw0K');
+    expect(chunk.skippedImages).toBe(0);
+  });
+
+  it('keeps the figures of a page that also has text', async () => {
+    const prose = 'A page with enough text to be prose and not a scan. '.repeat(3);
+    const chunk = await readPdf(imagePdf(100, 80, prose), {
+      page: 1,
+      offset: 0,
+      maxChars: 100_000,
+      images: true,
+    });
+    expect(chunk.text).toContain('enough text');
+    expect(chunk.images).toHaveLength(1);
+  });
+
+  it('extracts every picture on the page, small ones included, when asked', async () => {
+    const chunk = await readPdf(imagePdf(16, 16), { page: 1, offset: 0, maxChars: 1000, images: true });
+    expect(chunk.images).toHaveLength(1);
+    expect(chunk.skippedImages).toBe(0);
+  });
+
+  it('leaves the pictures out unless they are asked for', async () => {
+    const chunk = await readPdf(imagePdf(), { page: 1, offset: 0, maxChars: 1000 });
+    expect(chunk.images).toEqual([]);
+    expect(chunk.moreImages).toBe(false);
+  });
+
   it('stops after a fixed number of pages even when they hold little text', async () => {
-    const many = pdfOf(Array.from({ length: MAX_PAGES_PER_CALL + 5 }, () => ''));
+    const many = pdfOf(Array.from({ length: MAX_PAGES_PER_CALL + 5 }, () => 'text '.repeat(20)));
     const chunk = await readPdf(many, { page: 1, offset: 0, maxChars: 100_000 });
     expect(chunk).toMatchObject({
       lastPage: MAX_PAGES_PER_CALL,
       next: { page: MAX_PAGES_PER_CALL + 1, offset: 0 },
+    });
+  });
+
+  it('reads fewer pages when they have no text, so the cursor does not skip their pictures', async () => {
+    const many = pdfOf(Array.from({ length: MAX_PAGES_PER_CALL + 5 }, () => ''));
+    const chunk = await readPdf(many, { page: 1, offset: 0, maxChars: 100_000 });
+    expect(chunk).toMatchObject({
+      lastPage: MAX_IMAGE_PAGES_PER_CALL,
+      next: { page: MAX_IMAGE_PAGES_PER_CALL + 1, offset: 0 },
     });
   });
 });

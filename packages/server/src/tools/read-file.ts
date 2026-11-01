@@ -1,17 +1,11 @@
 import * as z from 'zod/v4';
 
+import { toBase64 } from '../files/base64.ts';
 import { embeddedImages } from '../files/embedded-images.ts';
 import { classifyConversionFailure, conversionFailureNote, toMarkdown } from '../files/markdown.ts';
 import { chooseMode, type ModeChoice, ReadMode } from '../files/mode.ts';
 import { MAX_PAGES_PER_CALL } from '../files/pdf.ts';
-import {
-  classify,
-  type DocumentKind,
-  effectiveType,
-  readFile,
-  toBase64,
-  unsupportedReason,
-} from '../files/read.ts';
+import { classify, type DocumentKind, effectiveType, readFile, unsupportedReason } from '../files/read.ts';
 import { decodeText, encodingNote, judge, readableByContent, withSniffedType } from '../files/sniff.ts';
 import type { DownloadedFile } from '../moodle/client.ts';
 import { defineCustomTool, jsonContent, type ToolContent, type ToolContext } from './define.ts';
@@ -68,6 +62,15 @@ const input = z.object({
     .min(1)
     .default(1)
     .describe('PDF only, extract mode: page to start from; use `next_page` from the previous call'),
+  images: z
+    .boolean()
+    .default(false)
+    .describe(
+      'PDF: include the pictures painted on the pages read. In extract mode they are attached as images ' +
+        '(at most 10 per call); in markdown mode Workers AI describes them, which spends the daily allowance. ' +
+        'Off by default, and vector drawings are not images. A DOCX or HTML document read as markdown also gets ' +
+        'its images described.',
+    ),
   max_chars: z
     .number()
     .int()
@@ -94,9 +97,11 @@ export const readFileTool = defineCustomTool({
     'used, and paging info; if `next_offset` is not null the file is longer, so call again with `offset` ' +
     'set to that value (and `page` to `next_page` when there is one). In extract mode PDFs are read a few ' +
     `pages at a time (at most ${MAX_PAGES_PER_CALL} per call), each page headed "--- Page N ---"; to jump to ` +
-    'a page, pass `page`. Images are returned as images unless `mode` is markdown. Pictures embedded in an ' +
-    "HTML file (a Page activity's index.html) are attached as images after the text. Scanned PDFs have no " +
-    'text layer and come back empty. A ZIP archive comes back as a list of its `entries`; call again with ' +
+    'a page, pass `page`. Set `images` to get the pictures painted on the pages (scans, photographs and ' +
+    'figures on slides) attached after the text, at most 10 per call; in markdown mode Workers AI describes ' +
+    'them instead. Text on a page is never replaced by its pictures, and diagrams drawn as vectors are not ' +
+    "images. Pictures embedded in an HTML file (a Page activity's index.html) are attached " +
+    'as images after the text. A ZIP archive comes back as a list of its `entries`; call again with ' +
     '`entry` set to one of their paths to read that file. Other types (audio, video) cannot be read as ' +
     'text: use mode resource to get the file, otherwise tell the user and give them the link. Files up to ' +
     '20 MB.',
@@ -179,7 +184,7 @@ export function readHtml(
     filename: `${name}.html`,
     skipped: false,
   };
-  return readDocument(context, file, { ...args, file_url: '', page: 1, entry: undefined }, {});
+  return readDocument(context, file, { ...args, file_url: '', page: 1, images: false, entry: undefined }, {});
 }
 
 async function readDocument(
@@ -252,11 +257,14 @@ async function convertOrExtract(
   let choice: ModeChoice = chooseMode(args.mode, format, {
     canConvert: markdown !== undefined,
     page: args.page,
+    images: args.images,
   });
   if (choice.mode === ReadMode.Markdown && markdown) {
     const started = Date.now();
     try {
-      const { text, tokens } = await toMarkdown(markdown, file, effectiveType(file));
+      const { text, tokens } = await toMarkdown(markdown, file, effectiveType(file), {
+        images: args.images,
+      });
       logger.info('file converted', {
         format,
         mode: choice.mode,
@@ -264,6 +272,7 @@ async function convertOrExtract(
         bytes: file.bytes.byteLength,
         chars: text.length,
         tokens,
+        images: args.images,
         ms: Date.now() - started,
       });
       return textResult(file, args, { format, mode: ReadMode.Markdown, text, note: origin.note });
@@ -311,7 +320,7 @@ async function extract(
   const started = Date.now();
   let reading;
   try {
-    reading = await readFile(file, format, { page, offset, maxChars: max_chars });
+    reading = await readFile(file, format, { page, offset, maxChars: max_chars, images: args.images });
   } catch (error) {
     // Corrupt, encrypted or oversized-when-inflated files: report to the model, don't crash the call.
     logParseFailed(logger, file, format, error, started);
@@ -340,6 +349,8 @@ async function extract(
         pagesRead:
           chunk.firstPage === undefined ? 0 : (chunk.lastPage ?? chunk.firstPage) - chunk.firstPage + 1,
         chars: chunk.text.length,
+        images: chunk.images.length,
+        imagesSkipped: chunk.skippedImages,
         truncated: chunk.next !== null,
       });
       return pdfResult(file, args, chunk, modeNote);

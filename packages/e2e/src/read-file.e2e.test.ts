@@ -24,7 +24,11 @@ describe('read_file against a mock Moodle file server', () => {
   const alice = () => McpClient.bearer(world.worker, ALICE.token);
   const read = async (file_url: string, extra: Record<string, unknown> = {}) => {
     const result = await alice().call('read_file', { file_url, ...extra });
-    return { result, json: () => JSON.parse(result.content.at(-1)?.text ?? 'null') as FileText };
+    return {
+      result,
+      json: () =>
+        JSON.parse(result.content.find((content) => content.type === 'text')?.text ?? 'null') as FileText,
+    };
   };
 
   it('downloads with the caller’s token and returns the text', async () => {
@@ -63,6 +67,23 @@ describe('read_file against a mock Moodle file server', () => {
     const { json } = await read(FILE_URLS.slides, { page: 3 });
     expect(json()).toMatchObject({ pages: 1, text: '', next_page: null });
     expect(json().note).toContain('past the end');
+  });
+
+  it('returns the picture of a page that has no text layer when asked', async () => {
+    const { result, json } = await read(FILE_URLS.scan, { images: true });
+    expect(json()).toMatchObject({ pages: 1, text: '--- Page 1 ---', next_page: null });
+    expect(json().note).toContain('1 image(s) from page(s) 1');
+    const image = result.content.find((content) => content.type === 'image');
+    expect(image).toMatchObject({ mimeType: 'image/png' });
+    // The PNG signature, base64-encoded, so the block is a real image and not a placeholder.
+    expect(image?.data?.slice(0, 8)).toBe('iVBORw0K');
+  });
+
+  it('attaches figures from a page that also has text when asked', async () => {
+    const { result, json } = await read(FILE_URLS.figure, { images: true });
+    expect(json().text).toContain('enough words');
+    const image = result.content.find((content) => content.type === 'image');
+    expect(image?.data?.slice(0, 8)).toBe('iVBORw0K');
   });
 
   it('keeps the headings and tables of a Word document', async () => {
@@ -252,7 +273,10 @@ describe('read_file with Workers AI bound', () => {
     });
     return {
       result,
-      json: () => JSON.parse(result.content.at(-1)?.text ?? 'null') as FileText & { mode: string },
+      json: () =>
+        JSON.parse(result.content.find((content) => content.type === 'text')?.text ?? 'null') as FileText & {
+          mode: string;
+        },
     };
   };
 
@@ -270,6 +294,20 @@ describe('read_file with Workers AI bound', () => {
     expect(Buffer.from(world.ai.calls[0]?.bytes ?? []).toString()).toContain('Lecture one slides');
     const logs = await world.worker.logs();
     expect(logs.find((l) => l.msg === 'file converted')).toMatchObject({ format: 'pdf', tokens: 11 });
+  });
+
+  it('describes PDF images in markdown mode when the caller asks for them', async () => {
+    const { json } = await read(FILE_URLS.slides, { mode: 'markdown', images: true });
+    expect(json()).toMatchObject({ format: 'pdf', mode: 'markdown' });
+    expect(world.ai.calls[0]).toMatchObject({
+      options: { conversionOptions: { pdf: { metadata: false, images: { convert: true } } } },
+    });
+  });
+
+  it('extracts a PDF’s images in auto mode instead of describing them', async () => {
+    const { json } = await read(FILE_URLS.scan, { images: true });
+    expect(json()).toMatchObject({ format: 'pdf', mode: 'extract', text: '--- Page 1 ---' });
+    expect(world.ai.calls).toEqual([]);
   });
 
   it('converts Word documents with Workers AI and HTML with our own converter', async () => {

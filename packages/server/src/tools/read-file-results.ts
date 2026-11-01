@@ -104,28 +104,51 @@ export function pdfResult(
   note: string | undefined,
 ): ToolContent[] {
   const noText = chunk.text.replace(/--- Page \d+ ---/g, '').trim() === '';
-  return jsonContent({
-    ...describeFile(file),
-    readable: true,
-    format: 'pdf',
-    mode: ReadMode.Extract,
-    pages: chunk.pages,
-    page,
-    offset,
-    first_page: chunk.firstPage,
-    last_page: chunk.lastPage,
-    next_page: chunk.next?.page ?? null,
-    next_offset: chunk.next?.offset ?? null,
-    note: joinNotes(
-      note,
-      page > chunk.pages
-        ? `page is past the end of the document, which has ${chunk.pages} pages.`
-        : noText
-          ? 'No text found on these pages. A scanned or image-only document has no text layer.'
-          : undefined,
-    ),
-    text: chunk.text,
-  });
+  const attached = chunk.images.length;
+  const picturePages = [...new Set(chunk.images.map((image) => image.page))];
+  const omitted = [
+    chunk.skippedImages > 0 ? `${chunk.skippedImages} image(s) were too large or beyond the limit.` : '',
+    chunk.moreImages
+      ? 'More images are on these pages than one call returns (at most 10); call again with a later `page` for them.'
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const pictures =
+    attached === 0
+      ? omitted || undefined
+      : `${attached} image(s) from page(s) ${picturePages.join(', ')} are attached after this, in page order.` +
+        (omitted ? ` ${omitted}` : '');
+  return [
+    ...jsonContent({
+      ...describeFile(file),
+      readable: true,
+      format: 'pdf',
+      mode: ReadMode.Extract,
+      pages: chunk.pages,
+      page,
+      offset,
+      first_page: chunk.firstPage,
+      last_page: chunk.lastPage,
+      next_page: chunk.next?.page ?? null,
+      next_offset: chunk.next?.offset ?? null,
+      note: joinNotes(
+        note,
+        page > chunk.pages
+          ? `page is past the end of the document, which has ${chunk.pages} pages.`
+          : noText && attached === 0
+            ? 'No text found on these pages. A scanned or image-only document has no text layer.'
+            : undefined,
+        pictures,
+      ),
+      text: chunk.text,
+    }),
+    ...chunk.images.map((image): ToolContent => ({
+      type: 'image',
+      data: image.base64,
+      mimeType: 'image/png',
+    })),
+  ];
 }
 
 /** An image returned as an image block, with the usual description after it. */

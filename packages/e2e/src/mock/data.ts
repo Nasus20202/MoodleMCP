@@ -61,11 +61,15 @@ export const ENROLMENTS: Record<number, readonly number[]> = {
 const NOTES_PATH = '/webservice/pluginfile.php/301/mod_resource/content/1/notes.txt';
 const PIXEL_PATH = '/webservice/pluginfile.php/316/mod_resource/content/1/pixel.png';
 const SLIDES_PATH = '/webservice/pluginfile.php/302/mod_resource/content/1/slides.pdf';
+const SCAN_PATH = '/webservice/pluginfile.php/318/mod_resource/content/1/scan.pdf';
+const FIGURE_PATH = '/webservice/pluginfile.php/319/mod_resource/content/1/figure.pdf';
 export const FILE_URLS = {
   notes: `${SITE_URL}${NOTES_PATH}`,
   /** The form Moodle puts in HTML content: the Worker must rewrite it to the web service file server. */
   notesPlain: `${SITE_URL}/pluginfile.php/301/mod_resource/content/1/notes.txt`,
   slides: `${SITE_URL}${SLIDES_PATH}`,
+  scan: `${SITE_URL}${SCAN_PATH}`,
+  figure: `${SITE_URL}${FIGURE_PATH}`,
   pixel: `${SITE_URL}${PIXEL_PATH}`,
 } as const;
 
@@ -84,6 +88,29 @@ export function tinyPdf(text: string): Uint8Array {
       '%%EOF',
     ].join('\n'),
   );
+}
+
+/** A one-page PDF painted with a solid image, optionally after a line of text; no text layer without one. */
+export function tinyImagePdf(width = 120, height = 90, text = ''): Uint8Array {
+  const pixels = new Uint8Array(width * height * 3).fill(90);
+  const drawing = `q ${width} 0 0 ${height} 72 650 cm /Im0 Do Q`;
+  const stream = text ? `BT /F1 12 Tf 72 700 Td (${text}) Tj ET\n${drawing}` : drawing;
+  return new Uint8Array([
+    ...strToU8(
+      [
+        '%PDF-1.4',
+        '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj',
+        '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj',
+        '3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 6 0 R>>/XObject<</Im0 5 0 R>>>>>>endobj',
+        `4 0 obj<</Length ${stream.length}>>stream\n${stream}\nendstream endobj`,
+        `5 0 obj<</Type/XObject/Subtype/Image/Width ${width}/Height ${height}/ColorSpace/DeviceRGB/BitsPerComponent 8/Length ${pixels.length}>>stream\n`,
+      ].join('\n'),
+    ),
+    ...pixels,
+    ...strToU8(
+      '\nendstream endobj\n6 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R/Size 7>>\n%%EOF',
+    ),
+  ]);
 }
 
 export function tinyDocx(...paragraphs: string[]): Uint8Array {
@@ -114,6 +141,12 @@ export const FILES: Record<string, MockFile> = {
     type: 'text/plain; charset=utf-8',
   },
   [SLIDES_PATH]: { course: COURSE_ALG, body: tinyPdf('Lecture one slides'), type: 'application/pdf' },
+  [SCAN_PATH]: { course: COURSE_ALG, body: tinyImagePdf(), type: 'application/pdf' },
+  [FIGURE_PATH]: {
+    course: COURSE_ALG,
+    body: tinyImagePdf(120, 90, 'A slide with a figure and enough words to count as text. '.repeat(3)),
+    type: 'application/pdf',
+  },
   '/webservice/pluginfile.php/303/mod_resource/content/1/syllabus.docx': {
     course: COURSE_ALG,
     body: tinyDocx('Syllabus', 'Week 1: sorting'),
