@@ -102,10 +102,101 @@ const COURSE_FIELDS = [
  */
 export function pickCourses(result: unknown): unknown {
   if (!Array.isArray(result)) return result;
-  const courses = result.map((course) => pick(course, COURSE_FIELDS));
+  const courses: Fields[] = result.map((course) => ({
+    ...pick(course, COURSE_FIELDS),
+    ...(isFields(course) && typeof course.summary === 'string' && course.summary !== ''
+      ? { summary: shortMarkdown(course.summary, 200) }
+      : {}),
+  }));
   const shown = courses.filter((course) => course.hidden !== true);
   return [...shown, ...courses.filter((course) => course.hidden === true)];
 }
+
+/** The same item without the listed fields. */
+const omit = (item: unknown, fields: ReadonlySet<string>): unknown =>
+  isFields(item) ? Object.fromEntries(Object.entries(item).filter(([key]) => !fields.has(key))) : item;
+
+/** Settings of an assignment that no student reads (notifications, marking workflow, teams, submission plugins). */
+const ASSIGNMENT_NOISE = new Set([
+  'nosubmissions',
+  'submissiondrafts',
+  'sendnotifications',
+  'sendlatenotifications',
+  'sendstudentnotifications',
+  'gradepenalty',
+  'completionsubmit',
+  'gradingduedate',
+  'requireallteammemberssubmit',
+  'teamsubmissiongroupingid',
+  'blindmarking',
+  'hidegrader',
+  'revealidentities',
+  'attemptreopenmethod',
+  'markingworkflow',
+  'markingallocation',
+  'markinganonymous',
+  'requiresubmissionstatement',
+  'preventsubmissionnotingroup',
+  'submissionattachments',
+  'configs',
+  'introfiles',
+]);
+
+/** An assignment with its intro as Markdown and without its settings. */
+export function pickAssignments(result: unknown): unknown {
+  return mapList(result, 'courses', (course) =>
+    mapList(course, 'assignments', (assignment) => withBriefIntro(omit(assignment, ASSIGNMENT_NOISE), 2000)),
+  );
+}
+
+/** Settings of a forum (grading, RSS, blocking, tracking) that a reader of the forum never uses. */
+const FORUM_NOISE = new Set([
+  'introfiles',
+  'duedate',
+  'cutoffdate',
+  'assessed',
+  'assesstimestart',
+  'assesstimefinish',
+  'scale',
+  'grade_forum',
+  'grade_forum_notify',
+  'maxbytes',
+  'maxattachments',
+  'forcesubscribe',
+  'trackingtype',
+  'rsstype',
+  'rssarticles',
+  'warnafter',
+  'blockafter',
+  'blockperiod',
+  'completiondiscussions',
+  'completionreplies',
+  'completionposts',
+  'cancreatediscussions',
+  'lockdiscussionafter',
+  'istracked',
+]);
+
+export const pickForums = (result: unknown): unknown =>
+  Array.isArray(result) ? result.map((forum) => withBriefIntro(omit(forum, FORUM_NOISE), 500)) : result;
+
+/**
+ * Of a notification: the message once (`fullmessage` is the text of `fullmessagehtml`, `text` and `smallmessage`
+ * are its subject again), and not the icon, the relative time or the recipient.
+ */
+const NOTIFICATION_NOISE = new Set([
+  'text',
+  'smallmessage',
+  'shortenedsubject',
+  'fullmessagehtml',
+  'useridto',
+  'deleted',
+  'timecreatedpretty',
+  'iconurl',
+]);
+
+export const pickNotifications = (result: unknown): unknown =>
+  mapList(result, 'notifications', (notification) => omit(notification, NOTIFICATION_NOISE));
 
 const QUIZ_FIELDS = [
   'id',

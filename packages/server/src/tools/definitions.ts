@@ -11,7 +11,17 @@ import {
   getUserProfileTool,
   listConversationsTool,
 } from './people.ts';
-import { pickCompletion, pickCourses, pickEvents, pickGrades, pickQuizzes, pickSiteInfo } from './pick.ts';
+import {
+  pickAssignments,
+  pickCompletion,
+  pickCourses,
+  pickEvents,
+  pickForums,
+  pickGrades,
+  pickNotifications,
+  pickQuizzes,
+  pickSiteInfo,
+} from './pick.ts';
 import { readFileTool } from './read-file.ts';
 
 const id = (describe: string) => z.number().int().positive().describe(describe);
@@ -154,6 +164,7 @@ export const TOOLS = [
     input: courseInput,
     fn: MoodleFunction.Assignments,
     params: courseIds,
+    shape: pickAssignments,
   }),
   defineTool({
     name: ToolName.GetSubmissionStatus,
@@ -258,6 +269,7 @@ export const TOOLS = [
     input: courseInput,
     fn: MoodleFunction.Forums,
     params: courseIds,
+    shape: pickForums,
   }),
   defineTool({
     name: ToolName.ListForumDiscussions,
@@ -294,5 +306,6 @@ export const TOOLS = [
     input: noInput,
     fn: MoodleFunction.PopupNotifications,
     params: async (_, client) => ({ useridto: await client.userId() }),
+    shape: pickNotifications,
   }),
 ];

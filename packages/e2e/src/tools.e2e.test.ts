@@ -127,7 +127,16 @@ const CASES: ToolCase[] = [
     tool: 'list_assignments',
     args: { course_id: COURSE_ALG },
     fn: 'mod_assign_get_assignments',
-    expected: { courses: [{ id: COURSE_ALG, assignments: alg.assignments }], warnings: [] },
+    // The intro is shortened to Markdown.
+    expected: {
+      courses: [
+        {
+          id: COURSE_ALG,
+          assignments: alg.assignments.map((a) => ({ ...(a as object), intro: 'Implement quicksort.' })),
+        },
+      ],
+      warnings: [],
+    },
   },
   {
     tool: 'get_submission_status',

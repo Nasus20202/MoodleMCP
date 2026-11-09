@@ -4,10 +4,13 @@ import {
   briefHtml,
   describeItem,
   describePage,
+  pickAssignments,
   pickCompletion,
   pickCourses,
   pickEvents,
+  pickForums,
   pickGrades,
+  pickNotifications,
   pickQuizzes,
   pickSiteInfo,
   shortMarkdown,
@@ -50,12 +53,13 @@ describe('pickCourses', () => {
     ...extra,
   });
 
-  it('keeps what picks a course and drops summaries, pictures and settings', () => {
+  it('keeps what picks a course, with a short summary, and drops pictures and settings', () => {
     expect(pickCourses([course(1, { hidden: false, startdate: 5, progress: 50, lastaccess: 9 })])).toEqual([
       {
         id: 1,
         shortname: 'C1',
         fullname: 'Course 1',
+        summary: 'long',
         visible: 1,
         hidden: false,
         startdate: 5,
@@ -304,5 +308,90 @@ describe('pickSiteInfo', () => {
     expect(pickSiteInfo(null)).toBeNull();
     expect(pickSiteInfo('text')).toBe('text');
     expect(pickSiteInfo([1])).toEqual([1]);
+  });
+});
+
+describe('pickAssignments', () => {
+  it('drops settings and keeps ids, dates, the intro as Markdown and the task files', () => {
+    const result = pickAssignments({
+      courses: [
+        {
+          id: 1,
+          assignments: [
+            {
+              id: 5,
+              cmid: 6,
+              name: 'Lab',
+              intro: '<p>Do <b>it</b></p>',
+              duedate: 9,
+              blindmarking: 0,
+              configs: [{ plugin: 'file' }],
+              introattachments: [{ filename: 'a.pdf', fileurl: 'https://x/a.pdf' }],
+            },
+          ],
+        },
+      ],
+    });
+    expect(result).toEqual({
+      courses: [
+        {
+          id: 1,
+          assignments: [
+            {
+              id: 5,
+              cmid: 6,
+              name: 'Lab',
+              intro: 'Do **it**',
+              duedate: 9,
+              introattachments: [{ filename: 'a.pdf', fileurl: 'https://x/a.pdf' }],
+            },
+          ],
+        },
+      ],
+    });
+  });
+});
+
+describe('pickForums', () => {
+  it('drops forum settings and keeps the ids and what the forum is', () => {
+    expect(
+      pickForums([{ id: 1, cmid: 2, name: 'News', type: 'news', numdiscussions: 3, rsstype: 0, scale: 0 }]),
+    ).toEqual([{ id: 1, cmid: 2, name: 'News', type: 'news', numdiscussions: 3 }]);
+  });
+});
+
+describe('pickNotifications', () => {
+  it('keeps the message once, with the ids to follow it', () => {
+    const result = pickNotifications({
+      unreadcount: 1,
+      notifications: [
+        {
+          id: 1,
+          subject: 'S',
+          text: '<p>S</p>',
+          fullmessage: 'Body',
+          fullmessagehtml: '<div>Body</div>',
+          contexturl: 'https://x/d',
+          customdata: '{"discussionid":"7"}',
+          timecreated: 5,
+          timecreatedpretty: '1 day ago',
+          iconurl: 'https://x/i.png',
+          useridto: 9,
+        },
+      ],
+    });
+    expect(result).toEqual({
+      unreadcount: 1,
+      notifications: [
+        {
+          id: 1,
+          subject: 'S',
+          fullmessage: 'Body',
+          contexturl: 'https://x/d',
+          customdata: '{"discussionid":"7"}',
+          timecreated: 5,
+        },
+      ],
+    });
   });
 });
