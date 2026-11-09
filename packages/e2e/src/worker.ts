@@ -85,6 +85,7 @@ export async function startWorker(options: WorkerOptions): Promise<RunningWorker
 
   // Miniflare ships its own copy of undici, whose types differ nominally from Node's; the values are compatible.
   const dispatch = (url: string, init: RequestInit): Promise<Response> =>
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- needed for tsc, which resolves the two undici copies separately
     miniflare.dispatchFetch(url, init as never) as unknown as Promise<Response>;
 
   // Log lines arrive over a separate channel from responses, so give them a moment to land.
