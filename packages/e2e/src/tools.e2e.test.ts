@@ -289,13 +289,24 @@ const CASES: ToolCase[] = [
     tool: 'list_forum_discussions',
     args: { forum_id: IDS.forum },
     fn: 'mod_forum_get_forum_discussions',
-    expected: DISCUSSIONS,
+    // The message is a Markdown preview.
+    expected: {
+      ...DISCUSSIONS,
+      discussions: DISCUSSIONS.discussions.map((d) => ({ ...d, message: 'The exam is on 20 January.' })),
+    },
   },
   {
     tool: 'get_forum_posts',
     args: { discussion_id: IDS.discussion },
     fn: 'mod_forum_get_discussion_posts',
-    expected: POSTS,
+    // Picture and action links of the posts are dropped.
+    expected: {
+      ...POSTS,
+      posts: POSTS.posts.map((post) => ({
+        ...post,
+        author: { fullname: post.author.fullname },
+      })),
+    },
   },
   {
     tool: 'get_notifications',

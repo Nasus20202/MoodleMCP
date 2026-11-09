@@ -8,10 +8,14 @@ import {
   pickCompletion,
   pickCourses,
   pickEvents,
+  pickForumDiscussions,
+  pickForumPosts,
   pickForums,
   pickGrades,
   pickNotifications,
+  pickQuizAttempts,
   pickQuizzes,
+  pickSearchedCourses,
   pickSiteInfo,
   shortMarkdown,
   withBriefIntro,
@@ -392,6 +396,71 @@ describe('pickNotifications', () => {
           timecreated: 5,
         },
       ],
+    });
+  });
+});
+
+describe('forum, search and quiz attempt shapes', () => {
+  it('drops the permission flags and links of forum posts at any depth, and keeps the text and files', () => {
+    expect(
+      pickForumPosts({
+        posts: [
+          {
+            id: 1,
+            message: '<p>Hi</p>',
+            capabilities: { reply: true },
+            urls: { view: 'https://x/p' },
+            author: { fullname: 'A', urls: { profileimage: 'https://x/i' } },
+            attachments: [{ filename: 'a.txt', fileurl: 'https://x/a.txt' }],
+          },
+        ],
+      }),
+    ).toEqual({
+      posts: [
+        {
+          id: 1,
+          message: '<p>Hi</p>',
+          author: { fullname: 'A' },
+          attachments: [{ filename: 'a.txt', fileurl: 'https://x/a.txt' }],
+        },
+      ],
+    });
+  });
+
+  it('shows a preview of each discussion message and keeps the ids', () => {
+    expect(
+      pickForumDiscussions({
+        discussions: [{ id: 1, discussion: 7, message: '<p>Hi <b>all</b></p>', mailed: 0 }],
+      }),
+    ).toEqual({
+      discussions: [{ id: 1, discussion: 7, message: 'Hi **all**' }],
+    });
+  });
+
+  it('keeps found courses with their teachers and a short summary, without pictures', () => {
+    expect(
+      pickSearchedCourses({
+        total: 1,
+        courses: [
+          {
+            id: 2,
+            fullname: 'F',
+            summary: '<p>S</p>',
+            courseimage: 'https://x/c.png',
+            contacts: [{ id: 3 }],
+          },
+        ],
+      }),
+    ).toEqual({ total: 1, courses: [{ id: 2, fullname: 'F', summary: 'S', contacts: [{ id: 3 }] }] });
+  });
+
+  it('keeps the state, score and times of a quiz attempt', () => {
+    expect(
+      pickQuizAttempts({
+        attempts: [{ id: 4, state: 'finished', sumgrades: 7, layout: '1,0', uniqueid: 9 }],
+      }),
+    ).toEqual({
+      attempts: [{ id: 4, state: 'finished', sumgrades: 7 }],
     });
   });
 });

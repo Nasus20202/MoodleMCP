@@ -79,7 +79,7 @@ function mapStrings(value: unknown, fn: (text: string) => string): unknown {
  * picture links of people, the AI-tool flags, PHP-serialised display settings and activity icon URLs.
  */
 const NOISE_KEY =
-  /^(?:profileimageurl\w*|\w+format|legacyfiles(?:last)?|enableaitools|enabledaiactions|displayoptions|modicon)$/;
+  /^(?:profileimageurl\w*|\w*pictureurl|\w*iconurl|\w+pretty|\w+format|legacyfiles(?:last)?|enableaitools|enabledaiactions|displayoptions|modicon)$/;
 
 /**
  * Whether a field says nothing. An empty list of anything but `warnings` does say something ("none": no

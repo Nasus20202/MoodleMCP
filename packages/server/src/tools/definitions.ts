@@ -16,11 +16,19 @@ import {
   pickCompletion,
   pickCourses,
   pickEvents,
+  pickForumDiscussions,
+  pickForumPosts,
   pickForums,
+  pickGlossaryEntries,
   pickGrades,
+  pickLessonPages,
   pickNotifications,
+  pickQuizAttempts,
+  pickQuizReview,
   pickQuizzes,
+  pickSearchedCourses,
   pickSiteInfo,
+  pickSubmissionStatus,
 } from './pick.ts';
 import { readFileTool } from './read-file.ts';
 
@@ -67,6 +75,7 @@ export const TOOLS = [
     input: z.object({ query: z.string().min(1).describe('text to search for in course names') }),
     fn: MoodleFunction.SearchCourses,
     params: ({ query }) => ({ criterianame: 'search', criteriavalue: query }),
+    shape: pickSearchedCourses,
   }),
   getCourseContentsTool,
   defineTool({
@@ -105,6 +114,7 @@ export const TOOLS = [
       from: offset,
       limit,
     }),
+    shape: pickGlossaryEntries,
   }),
   defineTool({
     name: ToolName.GetLessonPages,
@@ -114,6 +124,7 @@ export const TOOLS = [
     input: z.object({ lesson_id: id('lesson id: the `id` of a lesson from list_activities (type lesson)') }),
     fn: MoodleFunction.LessonPages,
     params: ({ lesson_id }) => ({ lessonid: lesson_id }),
+    shape: pickLessonPages,
   }),
   defineTool({
     name: ToolName.GetChoiceResults,
@@ -174,6 +185,7 @@ export const TOOLS = [
     input: z.object({ assign_id: id('assignment id: the `id` of an assignment from list_assignments') }),
     fn: MoodleFunction.SubmissionStatus,
     params: ({ assign_id }) => ({ assignid: assign_id }),
+    shape: pickSubmissionStatus,
   }),
   defineTool({
     name: ToolName.ListQuizzes,
@@ -199,6 +211,7 @@ export const TOOLS = [
       userid: await client.userId(),
       status: 'all',
     }),
+    shape: pickQuizAttempts,
   }),
   defineTool({
     name: ToolName.GetQuizAttemptReview,
@@ -208,6 +221,7 @@ export const TOOLS = [
     input: z.object({ attempt_id: id('attempt id: the `id` of a finished attempt from get_quiz_attempts') }),
     fn: MoodleFunction.QuizAttemptReview,
     params: ({ attempt_id }) => ({ attemptid: attempt_id, page: -1 }),
+    shape: pickQuizReview,
   }),
   defineTool({
     name: ToolName.GetUpcomingEvents,
@@ -281,6 +295,7 @@ export const TOOLS = [
     input: z.object({ forum_id: forumId }),
     fn: MoodleFunction.ForumDiscussions,
     params: ({ forum_id }) => ({ forumid: forum_id }),
+    shape: pickForumDiscussions,
   }),
   defineTool({
     name: ToolName.GetForumPosts,
@@ -293,6 +308,7 @@ export const TOOLS = [
     }),
     fn: MoodleFunction.ForumPosts,
     params: ({ discussion_id }) => ({ discussionid: discussion_id, sortby: 'created', sortdirection: 'ASC' }),
+    shape: pickForumPosts,
   }),
   getCourseParticipantsTool,
   getUserProfileTool,

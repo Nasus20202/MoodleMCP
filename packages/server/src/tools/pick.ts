@@ -198,6 +198,115 @@ const NOTIFICATION_NOISE = new Set([
 export const pickNotifications = (result: unknown): unknown =>
   mapList(result, 'notifications', (notification) => omit(notification, NOTIFICATION_NOISE));
 
+/** The same value without the listed keys at any depth, for results whose useful fields are the many. */
+function omitDeep(value: unknown, fields: ReadonlySet<string>): unknown {
+  if (Array.isArray(value)) return value.map((item) => omitDeep(item, fields));
+  if (!isFields(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !fields.has(key))
+      .map(([key, item]) => [key, omitDeep(item, fields)] as const),
+  );
+}
+
+const noise = (...fields: string[]) => new Set(fields);
+
+const SEARCH_COURSE_NOISE = noise(
+  'displayname',
+  'categoryid',
+  'sortorder',
+  'courseimage',
+  'summaryfiles',
+  'overviewfiles',
+  'enrollmentmethods',
+  'showactivitydates',
+  'showcompletionconditions',
+);
+
+/** Found courses: names, ids, teachers and a short summary, without pictures and display settings. */
+export function pickSearchedCourses(result: unknown): unknown {
+  return mapList(result, 'courses', (course) => {
+    const kept = omit(course, SEARCH_COURSE_NOISE);
+    return isFields(kept) && typeof kept.summary === 'string'
+      ? { ...kept, summary: shortMarkdown(kept.summary, 300) }
+      : kept;
+  });
+}
+
+const POST_NOISE = noise(
+  'capabilities',
+  'html',
+  'urls',
+  'haswordcount',
+  'wordcount',
+  'charcount',
+  'isprivatereply',
+  'hasparent',
+);
+
+/** Forum posts without the permission flags, rendered fragments and action links Moodle attaches to each. */
+export const pickForumPosts = (result: unknown): unknown => omitDeep(result, POST_NOISE);
+
+const DISCUSSION_NOISE = noise(
+  'parent',
+  'mailed',
+  'messagetrust',
+  'totalscore',
+  'mailnow',
+  'canreply',
+  'canlock',
+  'canfavourite',
+);
+
+/** A topic list shows a preview of each message; get_forum_posts has the whole text. */
+export function pickForumDiscussions(result: unknown): unknown {
+  return mapList(result, 'discussions', (discussion) => {
+    const kept = omit(discussion, DISCUSSION_NOISE);
+    return isFields(kept) && 'message' in kept ? { ...kept, message: briefHtml(kept.message, 600) } : kept;
+  });
+}
+
+const GLOSSARY_NOISE = noise(
+  'usedynalink',
+  'casesensitive',
+  'fullmatch',
+  'approved',
+  'canviewfullnames',
+  'sourceglossaryid',
+);
+
+export const pickGlossaryEntries = (result: unknown): unknown => omitDeep(result, GLOSSARY_NOISE);
+
+const LESSON_NOISE = noise('filescount', 'filessizetotal', 'answerids', 'qoption', 'layout', 'display');
+
+export const pickLessonPages = (result: unknown): unknown => omitDeep(result, LESSON_NOISE);
+
+const SUBMISSION_NOISE = noise('usergroups', 'caneditowner', 'blindmarking');
+
+export const pickSubmissionStatus = (result: unknown): unknown => omitDeep(result, SUBMISSION_NOISE);
+
+const ATTEMPT_NOISE = noise(
+  'layout',
+  'uniqueid',
+  'currentpage',
+  'preview',
+  'timemodifiedoffline',
+  'timecheckstate',
+  'gradednotificationsenttime',
+);
+
+export const pickQuizAttempts = (result: unknown): unknown => omitDeep(result, ATTEMPT_NOISE);
+
+const REVIEW_NOISE = noise(
+  ...ATTEMPT_NOISE,
+  'sequencecheck',
+  'lastactiontime',
+  'hasautosavedstep',
+  'settings',
+);
+
+export const pickQuizReview = (result: unknown): unknown => omitDeep(result, REVIEW_NOISE);
+
 const QUIZ_FIELDS = [
   'id',
   'coursemodule',
