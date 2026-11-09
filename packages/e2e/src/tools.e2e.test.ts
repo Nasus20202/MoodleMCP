@@ -326,6 +326,7 @@ describe('MCP tools against a mock Moodle', () => {
       const result = body.result;
       expect(result?.capabilities.tools).toBeDefined();
       expect(result?.instructions).toContain('Read-only');
+      expect(result?.instructions).toContain('generative AI');
       expect(world.moodle.requests).toHaveLength(0);
     });
 
