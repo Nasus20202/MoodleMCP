@@ -27,6 +27,8 @@ const CLIENT_ID = 'moodle-token';
 const SERVER_INSTRUCTIONS = [
   "Read-only access to the user's Moodle (e-learning) account. Nothing can be changed, submitted or posted.",
   "Start with list_courses (the user's own courses; search_courses finds any course by name) to get course ids.",
+  "`hidden` is the user's own dashboard choice: non-hidden courses are the current ones by default, but a hidden",
+  'course may be the one the user asks about.',
   'Use get_course_contents for a course outline; it lists files with a `fileurl` that read_file turns into text',
   '(PDF, Word, PowerPoint, HTML, text, images). The outline shortens long texts: read a page in full with get_page',
   'and a label with list_activities (type label). For "what is due soon?" use get_upcoming_events.',

@@ -5,6 +5,7 @@ import {
   describeItem,
   describePage,
   pickCompletion,
+  pickCourses,
   pickEvents,
   pickGrades,
   pickQuizzes,
@@ -33,6 +34,49 @@ describe('briefHtml', () => {
     expect(withBriefIntro({ id: 1, intro: '<p>x</p>' })).toEqual({ id: 1, intro: 'x' });
     expect(withBriefIntro({ id: 1 })).toEqual({ id: 1 });
     expect(withBriefIntro('x')).toBe('x');
+  });
+});
+
+describe('pickCourses', () => {
+  const course = (id: number, extra: object = {}) => ({
+    id,
+    shortname: `C${id}`,
+    fullname: `Course ${id}`,
+    visible: 1,
+    summary: '<p>long</p>',
+    courseimage: 'https://x/c.svg',
+    overviewfiles: [{ filename: 'a.png' }],
+    showgrades: true,
+    ...extra,
+  });
+
+  it('keeps what picks a course and drops summaries, pictures and settings', () => {
+    expect(pickCourses([course(1, { hidden: false, startdate: 5, progress: 50, lastaccess: 9 })])).toEqual([
+      {
+        id: 1,
+        shortname: 'C1',
+        fullname: 'Course 1',
+        visible: 1,
+        hidden: false,
+        startdate: 5,
+        progress: 50,
+        lastaccess: 9,
+      },
+    ]);
+  });
+
+  it('lists courses the user has not hidden first and keeps every course', () => {
+    const result = pickCourses([
+      course(1, { hidden: true }),
+      course(2, { hidden: false }),
+      course(3),
+      course(4, { hidden: true }),
+    ]);
+    expect((result as { id: number }[]).map((c) => c.id)).toEqual([2, 3, 1, 4]);
+  });
+
+  it('passes anything of another shape through unchanged', () => {
+    expect(pickCourses({ exception: 'x' })).toEqual({ exception: 'x' });
   });
 });
 

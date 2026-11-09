@@ -11,7 +11,7 @@ import {
   getUserProfileTool,
   listConversationsTool,
 } from './people.ts';
-import { pickCompletion, pickEvents, pickGrades, pickQuizzes, pickSiteInfo } from './pick.ts';
+import { pickCompletion, pickCourses, pickEvents, pickGrades, pickQuizzes, pickSiteInfo } from './pick.ts';
 import { readFileTool } from './read-file.ts';
 
 const id = (describe: string) => z.number().int().positive().describe(describe);
@@ -41,9 +41,11 @@ export const TOOLS = [
     name: ToolName.ListCourses,
     description:
       'List the courses the user is enrolled in, with their ids: start here, because almost every other tool ' +
-      'needs a `course_id` from this list.',
+      'needs a `course_id` from this list. Courses the user has not hidden on their dashboard (`hidden`) come ' +
+      'first, which usually means the current ones; hidden courses are still listed and still readable.',
     input: noInput,
     fn: MoodleFunction.UserCourses,
+    shape: pickCourses,
     params: async (_, client) => ({ userid: await client.userId() }),
   }),
   defineTool({

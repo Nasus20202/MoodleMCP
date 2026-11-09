@@ -83,6 +83,30 @@ const SITE_INFO_FIELDS = [
 export const pickSiteInfo = (info: unknown): unknown =>
   isFields(info) ? pick(info, SITE_INFO_FIELDS) : info;
 
+const COURSE_FIELDS = [
+  'id',
+  'shortname',
+  'fullname',
+  'visible',
+  'hidden',
+  'startdate',
+  'enddate',
+  'progress',
+  'lastaccess',
+] as const;
+
+/**
+ * The user's courses as a list to choose from: ids, names, dates and progress. The rest (summary HTML, image
+ * links, completion and display settings) is most of the size. Courses the user has not hidden on their
+ * dashboard come first; every course stays in the list, since `hidden` is the user's tidiness, not relevance.
+ */
+export function pickCourses(result: unknown): unknown {
+  if (!Array.isArray(result)) return result;
+  const courses = result.map((course) => pick(course, COURSE_FIELDS));
+  const shown = courses.filter((course) => course.hidden !== true);
+  return [...shown, ...courses.filter((course) => course.hidden === true)];
+}
+
 const QUIZ_FIELDS = [
   'id',
   'coursemodule',
