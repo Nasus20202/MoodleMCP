@@ -11,7 +11,25 @@ import {
   getUserProfileTool,
   listConversationsTool,
 } from './people.ts';
-import { pickCompletion, pickEvents, pickGrades, pickQuizzes, pickSiteInfo } from './pick.ts';
+import {
+  pickAssignments,
+  pickCompletion,
+  pickCourses,
+  pickEvents,
+  pickForumDiscussions,
+  pickForumPosts,
+  pickForums,
+  pickGlossaryEntries,
+  pickGrades,
+  pickLessonPages,
+  pickNotifications,
+  pickQuizAttempts,
+  pickQuizReview,
+  pickQuizzes,
+  pickSearchedCourses,
+  pickSiteInfo,
+  pickSubmissionStatus,
+} from './pick.ts';
 import { readFileTool } from './read-file.ts';
 
 const id = (describe: string) => z.number().int().positive().describe(describe);
@@ -41,9 +59,11 @@ export const TOOLS = [
     name: ToolName.ListCourses,
     description:
       'List the courses the user is enrolled in, with their ids: start here, because almost every other tool ' +
-      'needs a `course_id` from this list.',
+      'needs a `course_id` from this list. Courses the user has not hidden on their dashboard (`hidden`) come ' +
+      'first, which usually means the current ones; hidden courses are still listed and still readable.',
     input: noInput,
     fn: MoodleFunction.UserCourses,
+    shape: pickCourses,
     params: async (_, client) => ({ userid: await client.userId() }),
   }),
   defineTool({
@@ -55,6 +75,7 @@ export const TOOLS = [
     input: z.object({ query: z.string().min(1).describe('text to search for in course names') }),
     fn: MoodleFunction.SearchCourses,
     params: ({ query }) => ({ criterianame: 'search', criteriavalue: query }),
+    shape: pickSearchedCourses,
   }),
   getCourseContentsTool,
   defineTool({
@@ -93,6 +114,7 @@ export const TOOLS = [
       from: offset,
       limit,
     }),
+    shape: pickGlossaryEntries,
   }),
   defineTool({
     name: ToolName.GetLessonPages,
@@ -102,6 +124,7 @@ export const TOOLS = [
     input: z.object({ lesson_id: id('lesson id: the `id` of a lesson from list_activities (type lesson)') }),
     fn: MoodleFunction.LessonPages,
     params: ({ lesson_id }) => ({ lessonid: lesson_id }),
+    shape: pickLessonPages,
   }),
   defineTool({
     name: ToolName.GetChoiceResults,
@@ -152,6 +175,7 @@ export const TOOLS = [
     input: courseInput,
     fn: MoodleFunction.Assignments,
     params: courseIds,
+    shape: pickAssignments,
   }),
   defineTool({
     name: ToolName.GetSubmissionStatus,
@@ -161,6 +185,7 @@ export const TOOLS = [
     input: z.object({ assign_id: id('assignment id: the `id` of an assignment from list_assignments') }),
     fn: MoodleFunction.SubmissionStatus,
     params: ({ assign_id }) => ({ assignid: assign_id }),
+    shape: pickSubmissionStatus,
   }),
   defineTool({
     name: ToolName.ListQuizzes,
@@ -186,6 +211,7 @@ export const TOOLS = [
       userid: await client.userId(),
       status: 'all',
     }),
+    shape: pickQuizAttempts,
   }),
   defineTool({
     name: ToolName.GetQuizAttemptReview,
@@ -195,6 +221,7 @@ export const TOOLS = [
     input: z.object({ attempt_id: id('attempt id: the `id` of a finished attempt from get_quiz_attempts') }),
     fn: MoodleFunction.QuizAttemptReview,
     params: ({ attempt_id }) => ({ attemptid: attempt_id, page: -1 }),
+    shape: pickQuizReview,
   }),
   defineTool({
     name: ToolName.GetUpcomingEvents,
@@ -256,6 +283,7 @@ export const TOOLS = [
     input: courseInput,
     fn: MoodleFunction.Forums,
     params: courseIds,
+    shape: pickForums,
   }),
   defineTool({
     name: ToolName.ListForumDiscussions,
@@ -267,6 +295,7 @@ export const TOOLS = [
     input: z.object({ forum_id: forumId }),
     fn: MoodleFunction.ForumDiscussions,
     params: ({ forum_id }) => ({ forumid: forum_id }),
+    shape: pickForumDiscussions,
   }),
   defineTool({
     name: ToolName.GetForumPosts,
@@ -279,6 +308,7 @@ export const TOOLS = [
     }),
     fn: MoodleFunction.ForumPosts,
     params: ({ discussion_id }) => ({ discussionid: discussion_id, sortby: 'created', sortdirection: 'ASC' }),
+    shape: pickForumPosts,
   }),
   getCourseParticipantsTool,
   getUserProfileTool,
@@ -292,5 +322,6 @@ export const TOOLS = [
     input: noInput,
     fn: MoodleFunction.PopupNotifications,
     params: async (_, client) => ({ useridto: await client.userId() }),
+    shape: pickNotifications,
   }),
 ];

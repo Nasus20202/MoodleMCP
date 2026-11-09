@@ -57,7 +57,9 @@ const CASES: ToolCase[] = [
     fn: 'core_enrol_get_users_courses',
     looksUpUser: true,
     // The mock user's language is English, so the multi-language markup resolves to that part.
-    expected: COURSES.map((c) => (c.id === 101 ? { ...c, fullname: 'Algorithms' } : c)),
+    expected: COURSES.map(({ enrolledusercount: _users, ...c }) =>
+      c.id === 101 ? { ...c, fullname: 'Algorithms' } : c,
+    ),
   },
   {
     tool: 'search_courses',
@@ -125,7 +127,16 @@ const CASES: ToolCase[] = [
     tool: 'list_assignments',
     args: { course_id: COURSE_ALG },
     fn: 'mod_assign_get_assignments',
-    expected: { courses: [{ id: COURSE_ALG, assignments: alg.assignments }], warnings: [] },
+    // The intro is shortened to Markdown.
+    expected: {
+      courses: [
+        {
+          id: COURSE_ALG,
+          assignments: alg.assignments.map((a) => ({ ...(a as object), intro: 'Implement quicksort.' })),
+        },
+      ],
+      warnings: [],
+    },
   },
   {
     tool: 'get_submission_status',
@@ -278,13 +289,24 @@ const CASES: ToolCase[] = [
     tool: 'list_forum_discussions',
     args: { forum_id: IDS.forum },
     fn: 'mod_forum_get_forum_discussions',
-    expected: DISCUSSIONS,
+    // The message is a Markdown preview.
+    expected: {
+      ...DISCUSSIONS,
+      discussions: DISCUSSIONS.discussions.map((d) => ({ ...d, message: 'The exam is on 20 January.' })),
+    },
   },
   {
     tool: 'get_forum_posts',
     args: { discussion_id: IDS.discussion },
     fn: 'mod_forum_get_discussion_posts',
-    expected: POSTS,
+    // Picture and action links of the posts are dropped.
+    expected: {
+      ...POSTS,
+      posts: POSTS.posts.map((post) => ({
+        ...post,
+        author: { fullname: post.author.fullname },
+      })),
+    },
   },
   {
     tool: 'get_notifications',
@@ -326,6 +348,8 @@ describe('MCP tools against a mock Moodle', () => {
       const result = body.result;
       expect(result?.capabilities.tools).toBeDefined();
       expect(result?.instructions).toContain('Read-only');
+      expect(result?.instructions).toContain('generative AI');
+      expect(result?.instructions).toContain('solve tasks');
       expect(world.moodle.requests).toHaveLength(0);
     });
 

@@ -4,10 +4,18 @@ import {
   briefHtml,
   describeItem,
   describePage,
+  pickAssignments,
   pickCompletion,
+  pickCourses,
   pickEvents,
+  pickForumDiscussions,
+  pickForumPosts,
+  pickForums,
   pickGrades,
+  pickNotifications,
+  pickQuizAttempts,
   pickQuizzes,
+  pickSearchedCourses,
   pickSiteInfo,
   shortMarkdown,
   withBriefIntro,
@@ -33,6 +41,50 @@ describe('briefHtml', () => {
     expect(withBriefIntro({ id: 1, intro: '<p>x</p>' })).toEqual({ id: 1, intro: 'x' });
     expect(withBriefIntro({ id: 1 })).toEqual({ id: 1 });
     expect(withBriefIntro('x')).toBe('x');
+  });
+});
+
+describe('pickCourses', () => {
+  const course = (id: number, extra: object = {}) => ({
+    id,
+    shortname: `C${id}`,
+    fullname: `Course ${id}`,
+    visible: 1,
+    summary: '<p>long</p>',
+    courseimage: 'https://x/c.svg',
+    overviewfiles: [{ filename: 'a.png' }],
+    showgrades: true,
+    ...extra,
+  });
+
+  it('keeps what picks a course, with a short summary, and drops pictures and settings', () => {
+    expect(pickCourses([course(1, { hidden: false, startdate: 5, progress: 50, lastaccess: 9 })])).toEqual([
+      {
+        id: 1,
+        shortname: 'C1',
+        fullname: 'Course 1',
+        summary: 'long',
+        visible: 1,
+        hidden: false,
+        startdate: 5,
+        progress: 50,
+        lastaccess: 9,
+      },
+    ]);
+  });
+
+  it('lists courses the user has not hidden first and keeps every course', () => {
+    const result = pickCourses([
+      course(1, { hidden: true }),
+      course(2, { hidden: false }),
+      course(3),
+      course(4, { hidden: true }),
+    ]);
+    expect((result as { id: number }[]).map((c) => c.id)).toEqual([2, 3, 1, 4]);
+  });
+
+  it('passes anything of another shape through unchanged', () => {
+    expect(pickCourses({ exception: 'x' })).toEqual({ exception: 'x' });
   });
 });
 
@@ -260,5 +312,155 @@ describe('pickSiteInfo', () => {
     expect(pickSiteInfo(null)).toBeNull();
     expect(pickSiteInfo('text')).toBe('text');
     expect(pickSiteInfo([1])).toEqual([1]);
+  });
+});
+
+describe('pickAssignments', () => {
+  it('drops settings and keeps ids, dates, the intro as Markdown and the task files', () => {
+    const result = pickAssignments({
+      courses: [
+        {
+          id: 1,
+          assignments: [
+            {
+              id: 5,
+              cmid: 6,
+              name: 'Lab',
+              intro: '<p>Do <b>it</b></p>',
+              duedate: 9,
+              blindmarking: 0,
+              configs: [{ plugin: 'file' }],
+              introattachments: [{ filename: 'a.pdf', fileurl: 'https://x/a.pdf' }],
+            },
+          ],
+        },
+      ],
+    });
+    expect(result).toEqual({
+      courses: [
+        {
+          id: 1,
+          assignments: [
+            {
+              id: 5,
+              cmid: 6,
+              name: 'Lab',
+              intro: 'Do **it**',
+              duedate: 9,
+              introattachments: [{ filename: 'a.pdf', fileurl: 'https://x/a.pdf' }],
+            },
+          ],
+        },
+      ],
+    });
+  });
+});
+
+describe('pickForums', () => {
+  it('drops forum settings and keeps the ids and what the forum is', () => {
+    expect(
+      pickForums([{ id: 1, cmid: 2, name: 'News', type: 'news', numdiscussions: 3, rsstype: 0, scale: 0 }]),
+    ).toEqual([{ id: 1, cmid: 2, name: 'News', type: 'news', numdiscussions: 3 }]);
+  });
+});
+
+describe('pickNotifications', () => {
+  it('keeps the message once, with the ids to follow it', () => {
+    const result = pickNotifications({
+      unreadcount: 1,
+      notifications: [
+        {
+          id: 1,
+          subject: 'S',
+          text: '<p>S</p>',
+          fullmessage: 'Body',
+          fullmessagehtml: '<div>Body</div>',
+          contexturl: 'https://x/d',
+          customdata: '{"discussionid":"7"}',
+          timecreated: 5,
+          timecreatedpretty: '1 day ago',
+          iconurl: 'https://x/i.png',
+          useridto: 9,
+        },
+      ],
+    });
+    expect(result).toEqual({
+      unreadcount: 1,
+      notifications: [
+        {
+          id: 1,
+          subject: 'S',
+          fullmessage: 'Body',
+          contexturl: 'https://x/d',
+          customdata: '{"discussionid":"7"}',
+          timecreated: 5,
+        },
+      ],
+    });
+  });
+});
+
+describe('forum, search and quiz attempt shapes', () => {
+  it('drops the permission flags and links of forum posts at any depth, and keeps the text and files', () => {
+    expect(
+      pickForumPosts({
+        posts: [
+          {
+            id: 1,
+            message: '<p>Hi</p>',
+            capabilities: { reply: true },
+            urls: { view: 'https://x/p' },
+            author: { fullname: 'A', urls: { profileimage: 'https://x/i' } },
+            attachments: [{ filename: 'a.txt', fileurl: 'https://x/a.txt' }],
+          },
+        ],
+      }),
+    ).toEqual({
+      posts: [
+        {
+          id: 1,
+          message: '<p>Hi</p>',
+          author: { fullname: 'A' },
+          attachments: [{ filename: 'a.txt', fileurl: 'https://x/a.txt' }],
+        },
+      ],
+    });
+  });
+
+  it('shows a preview of each discussion message and keeps the ids', () => {
+    expect(
+      pickForumDiscussions({
+        discussions: [{ id: 1, discussion: 7, message: '<p>Hi <b>all</b></p>', mailed: 0 }],
+      }),
+    ).toEqual({
+      discussions: [{ id: 1, discussion: 7, message: 'Hi **all**' }],
+    });
+  });
+
+  it('keeps found courses with their teachers and a short summary, without pictures', () => {
+    expect(
+      pickSearchedCourses({
+        total: 1,
+        courses: [
+          {
+            id: 2,
+            fullname: 'F',
+            summary: '<p>S</p>',
+            courseimage: 'https://x/c.png',
+            contacts: [{ id: 3 }],
+          },
+        ],
+      }),
+    ).toEqual({ total: 1, courses: [{ id: 2, fullname: 'F', summary: 'S', contacts: [{ id: 3 }] }] });
+  });
+
+  it('keeps the state, score and times of a quiz attempt', () => {
+    expect(
+      pickQuizAttempts({
+        attempts: [{ id: 4, state: 'finished', sumgrades: 7, layout: '1,0', uniqueid: 9 }],
+      }),
+    ).toEqual({
+      attempts: [{ id: 4, state: 'finished', sumgrades: 7 }],
+    });
   });
 });

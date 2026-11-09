@@ -83,6 +83,230 @@ const SITE_INFO_FIELDS = [
 export const pickSiteInfo = (info: unknown): unknown =>
   isFields(info) ? pick(info, SITE_INFO_FIELDS) : info;
 
+const COURSE_FIELDS = [
+  'id',
+  'shortname',
+  'fullname',
+  'visible',
+  'hidden',
+  'startdate',
+  'enddate',
+  'progress',
+  'lastaccess',
+] as const;
+
+/**
+ * The user's courses as a list to choose from: ids, names, dates and progress. The rest (summary HTML, image
+ * links, completion and display settings) is most of the size. Courses the user has not hidden on their
+ * dashboard come first; every course stays in the list, since `hidden` is the user's tidiness, not relevance.
+ */
+export function pickCourses(result: unknown): unknown {
+  if (!Array.isArray(result)) return result;
+  const courses: Fields[] = result.map((course) => ({
+    ...pick(course, COURSE_FIELDS),
+    ...(isFields(course) && typeof course.summary === 'string' && course.summary !== ''
+      ? { summary: shortMarkdown(course.summary, 200) }
+      : {}),
+  }));
+  const shown = courses.filter((course) => course.hidden !== true);
+  return [...shown, ...courses.filter((course) => course.hidden === true)];
+}
+
+/** The same item without the listed fields. */
+const omit = (item: unknown, fields: ReadonlySet<string>): unknown =>
+  isFields(item) ? Object.fromEntries(Object.entries(item).filter(([key]) => !fields.has(key))) : item;
+
+/** Settings of an assignment that no student reads (notifications, marking workflow, teams, submission plugins). */
+const ASSIGNMENT_NOISE = new Set([
+  'nosubmissions',
+  'submissiondrafts',
+  'sendnotifications',
+  'sendlatenotifications',
+  'sendstudentnotifications',
+  'gradepenalty',
+  'completionsubmit',
+  'gradingduedate',
+  'requireallteammemberssubmit',
+  'teamsubmissiongroupingid',
+  'blindmarking',
+  'hidegrader',
+  'revealidentities',
+  'attemptreopenmethod',
+  'markingworkflow',
+  'markingallocation',
+  'markinganonymous',
+  'requiresubmissionstatement',
+  'preventsubmissionnotingroup',
+  'submissionattachments',
+  'configs',
+  'introfiles',
+]);
+
+/** An assignment with its intro as Markdown and without its settings. */
+export function pickAssignments(result: unknown): unknown {
+  return mapList(result, 'courses', (course) =>
+    mapList(course, 'assignments', (assignment) => withBriefIntro(omit(assignment, ASSIGNMENT_NOISE), 2000)),
+  );
+}
+
+/** Settings of a forum (grading, RSS, blocking, tracking) that a reader of the forum never uses. */
+const FORUM_NOISE = new Set([
+  'introfiles',
+  'duedate',
+  'cutoffdate',
+  'assessed',
+  'assesstimestart',
+  'assesstimefinish',
+  'scale',
+  'grade_forum',
+  'grade_forum_notify',
+  'maxbytes',
+  'maxattachments',
+  'forcesubscribe',
+  'trackingtype',
+  'rsstype',
+  'rssarticles',
+  'warnafter',
+  'blockafter',
+  'blockperiod',
+  'completiondiscussions',
+  'completionreplies',
+  'completionposts',
+  'cancreatediscussions',
+  'lockdiscussionafter',
+  'istracked',
+]);
+
+export const pickForums = (result: unknown): unknown =>
+  Array.isArray(result) ? result.map((forum) => withBriefIntro(omit(forum, FORUM_NOISE), 500)) : result;
+
+/**
+ * Of a notification: the message once (`fullmessage` is the text of `fullmessagehtml`, `text` and `smallmessage`
+ * are its subject again), and not the icon, the relative time or the recipient.
+ */
+const NOTIFICATION_NOISE = new Set([
+  'text',
+  'smallmessage',
+  'shortenedsubject',
+  'fullmessagehtml',
+  'useridto',
+  'deleted',
+  'timecreatedpretty',
+  'iconurl',
+]);
+
+export const pickNotifications = (result: unknown): unknown =>
+  mapList(result, 'notifications', (notification) => omit(notification, NOTIFICATION_NOISE));
+
+/** The same value without the listed keys at any depth, for results whose useful fields are the many. */
+function omitDeep(value: unknown, fields: ReadonlySet<string>): unknown {
+  if (Array.isArray(value)) return value.map((item) => omitDeep(item, fields));
+  if (!isFields(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !fields.has(key))
+      .map(([key, item]) => [key, omitDeep(item, fields)] as const),
+  );
+}
+
+const noise = (...fields: string[]) => new Set(fields);
+
+const SEARCH_COURSE_NOISE = noise(
+  'displayname',
+  'categoryid',
+  'sortorder',
+  'courseimage',
+  'summaryfiles',
+  'overviewfiles',
+  'enrollmentmethods',
+  'showactivitydates',
+  'showcompletionconditions',
+);
+
+/** Found courses: names, ids, teachers and a short summary, without pictures and display settings. */
+export function pickSearchedCourses(result: unknown): unknown {
+  return mapList(result, 'courses', (course) => {
+    const kept = omit(course, SEARCH_COURSE_NOISE);
+    return isFields(kept) && typeof kept.summary === 'string'
+      ? { ...kept, summary: shortMarkdown(kept.summary, 300) }
+      : kept;
+  });
+}
+
+const POST_NOISE = noise(
+  'capabilities',
+  'html',
+  'urls',
+  'haswordcount',
+  'wordcount',
+  'charcount',
+  'isprivatereply',
+  'hasparent',
+);
+
+/** Forum posts without the permission flags, rendered fragments and action links Moodle attaches to each. */
+export const pickForumPosts = (result: unknown): unknown => omitDeep(result, POST_NOISE);
+
+const DISCUSSION_NOISE = noise(
+  'parent',
+  'mailed',
+  'messagetrust',
+  'totalscore',
+  'mailnow',
+  'canreply',
+  'canlock',
+  'canfavourite',
+);
+
+/** A topic list shows a preview of each message; get_forum_posts has the whole text. */
+export function pickForumDiscussions(result: unknown): unknown {
+  return mapList(result, 'discussions', (discussion) => {
+    const kept = omit(discussion, DISCUSSION_NOISE);
+    return isFields(kept) && 'message' in kept ? { ...kept, message: briefHtml(kept.message, 600) } : kept;
+  });
+}
+
+const GLOSSARY_NOISE = noise(
+  'usedynalink',
+  'casesensitive',
+  'fullmatch',
+  'approved',
+  'canviewfullnames',
+  'sourceglossaryid',
+);
+
+export const pickGlossaryEntries = (result: unknown): unknown => omitDeep(result, GLOSSARY_NOISE);
+
+const LESSON_NOISE = noise('filescount', 'filessizetotal', 'answerids', 'qoption', 'layout', 'display');
+
+export const pickLessonPages = (result: unknown): unknown => omitDeep(result, LESSON_NOISE);
+
+const SUBMISSION_NOISE = noise('usergroups', 'caneditowner', 'blindmarking');
+
+export const pickSubmissionStatus = (result: unknown): unknown => omitDeep(result, SUBMISSION_NOISE);
+
+const ATTEMPT_NOISE = noise(
+  'layout',
+  'uniqueid',
+  'currentpage',
+  'preview',
+  'timemodifiedoffline',
+  'timecheckstate',
+  'gradednotificationsenttime',
+);
+
+export const pickQuizAttempts = (result: unknown): unknown => omitDeep(result, ATTEMPT_NOISE);
+
+const REVIEW_NOISE = noise(
+  ...ATTEMPT_NOISE,
+  'sequencecheck',
+  'lastactiontime',
+  'hasautosavedstep',
+  'settings',
+);
+
+export const pickQuizReview = (result: unknown): unknown => omitDeep(result, REVIEW_NOISE);
+
 const QUIZ_FIELDS = [
   'id',
   'coursemodule',
