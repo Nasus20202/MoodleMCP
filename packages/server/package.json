@@ -12,7 +12,7 @@
     "@moodle-mcp/shared": "workspace:*",
     "fflate": "0.8.3",
     "hono": "4.13.18",
-    "unpdf": "2.1.0",
+    "unpdf": "2.2.0",
     "zod": "4.6.7"
   }
 }
