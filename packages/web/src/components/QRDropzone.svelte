@@ -68,7 +68,8 @@
   {:else}
     <span class="text-3xl" aria-hidden="true">📷</span>
   {/if}
-  <span class="muted text-sm">{busy ? 'Reading QR code…' : 'Drop a screenshot here, or click to choose'}</span
-  >
+  <span class="muted text-sm">
+    {busy ? 'Reading QR code…' : 'Drop a screenshot here, or click to choose'}
+  </span>
   <input type="file" accept="image/*" class="sr-only" onchange={onPick} />
 </label>

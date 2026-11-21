@@ -43,9 +43,9 @@
 {:else}
   <div class="mb-2 flex items-center justify-between gap-3">
     <p class="text-xs text-slate-500">{tools.length} tools, loaded live from the server.</p>
-    <button type="button" class="btn btn-secondary" onclick={() => setAll(!allOpen)}
-      >{allOpen ? 'Collapse all' : 'Expand all'}</button
-    >
+    <button type="button" class="btn btn-secondary" onclick={() => setAll(!allOpen)}>
+      {allOpen ? 'Collapse all' : 'Expand all'}
+    </button>
   </div>
   <div class="tool-list">
     {#each tools as tool (tool.name)}<ToolCard {tool} bind:open={open[tool.name]} />{/each}
