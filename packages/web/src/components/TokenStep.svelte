@@ -53,31 +53,35 @@
         aria-selected={tab === 'link'}
         class="tab"
         class:tab-active={tab === 'link'}
-        onclick={() => (tab = 'link')}>Browser sign-in</button
+        onclick={() => (tab = 'link')}
       >
+        Browser sign-in
+      </button>
       <button
         role="tab"
         aria-selected={tab === 'qr'}
         class="tab"
         class:tab-active={tab === 'qr'}
-        onclick={() => (tab = 'qr')}>QR screenshot</button
+        onclick={() => (tab = 'qr')}
       >
+        QR screenshot
+      </button>
     </div>
 
     {#if tab === 'link'}
       <ol class="muted list-decimal space-y-2 pl-5">
         <li>
-          <button class="btn btn-primary" onclick={openSignIn} disabled={!session.site}
-            >Open Moodle sign-in ↗</button
-          >
+          <button class="btn btn-primary" onclick={openSignIn} disabled={!session.site}>
+            Open Moodle sign-in ↗
+          </button>
         </li>
         <li>
           Sign in. Moodle then shows a page with a <strong>“Click here to launch the app”</strong> link.
         </li>
         <li>
-          If your browser asks to open an app, cancel. Right-click that link, choose <strong
-            >Copy link address</strong
-          >, and paste it below.
+          If your browser asks to open an app, cancel. Right-click that link, choose <strong>
+            Copy link address
+          </strong>, and paste it below.
         </li>
       </ol>
     {/if}
@@ -94,11 +98,13 @@
         oninput={onLinkInput}></textarea>
     {:else}
       <p class="muted mb-3">
-        Open your <a class="link" href={profileUrl(session.site)} target="_blank" rel="noreferrer"
-          >Moodle profile</a
-        >, take a screenshot of the mobile-app QR code, then drop, paste (<kbd class="kbd">Ctrl</kbd>+<kbd
-          class="kbd">V</kbd
-        >) or pick it here.
+        Open your <a class="link" href={profileUrl(session.site)} target="_blank" rel="noreferrer">
+          Moodle profile
+        </a>, take a screenshot of the mobile-app QR code, then drop, paste (<kbd class="kbd">Ctrl</kbd>+<kbd
+          class="kbd"
+        >
+          V
+        </kbd>) or pick it here.
       </p>
       <QRDropzone active={tab === 'qr'} onText={applyText} onError={(message: string) => (error = message)} />
       <p class="mt-2 text-xs text-slate-500">

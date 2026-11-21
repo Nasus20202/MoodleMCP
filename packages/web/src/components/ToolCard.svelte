@@ -16,8 +16,9 @@
   </summary>
   <div class="pb-3 pl-6">
     <p class="muted text-sm">
-      {#each codeSegments(tool.description) as part, i (i)}{#if part.code}<code>{part.text}</code
-          >{:else}{part.text}{/if}{/each}
+      {#each codeSegments(tool.description) as part, i (i)}{#if part.code}<code>
+            {part.text}
+          </code>{:else}{part.text}{/if}{/each}
     </p>
     {#if args.length > 0}
       <dl class="params">
@@ -25,13 +26,14 @@
           <dt>
             <code class="param-name">{arg.name}</code>
             <span class="param-type">{arg.type}</span>
-            <span class="param-flag" class:param-required={arg.required}
-              >{arg.required ? 'required' : 'optional'}</span
-            >
+            <span class="param-flag" class:param-required={arg.required}>
+              {arg.required ? 'required' : 'optional'}
+            </span>
           </dt>
           <dd>
-            {#each codeSegments(arg.description ?? '') as part, i (i)}{#if part.code}<code>{part.text}</code
-                >{:else}{part.text}{/if}{/each}
+            {#each codeSegments(arg.description ?? '') as part, i (i)}{#if part.code}<code>
+                  {part.text}
+                </code>{:else}{part.text}{/if}{/each}
             {#if arg.default !== undefined}<span class="opacity-70">(default: {arg.default})</span>{/if}
           </dd>
         {/each}

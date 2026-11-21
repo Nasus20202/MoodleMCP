@@ -64,9 +64,9 @@
           <dd class="flex items-center gap-2">
             <code class="value">{shownToken}</code>
             {#if hasToken}
-              <button type="button" class="btn btn-secondary" onclick={() => (reveal = !reveal)}
-                >{reveal ? 'Hide' : 'Show'}</button
-              >
+              <button type="button" class="btn btn-secondary" onclick={() => (reveal = !reveal)}>
+                {reveal ? 'Hide' : 'Show'}
+              </button>
             {/if}
             <CopyButton text={realToken} label="Copy token" disabled={!hasToken} />
           </dd>
@@ -89,9 +89,9 @@
         <dd class="flex items-center gap-2">
           <code class="value">Authorization: Bearer {shownToken}</code>
           {#if hasToken}
-            <button type="button" class="btn btn-secondary" onclick={() => (reveal = !reveal)}
-              >{reveal ? 'Hide' : 'Show'}</button
-            >
+            <button type="button" class="btn btn-secondary" onclick={() => (reveal = !reveal)}>
+              {reveal ? 'Hide' : 'Show'}
+            </button>
           {/if}
           <CopyButton text={`Bearer ${realToken}`} label="Copy value" disabled={!hasToken} />
         </dd>
