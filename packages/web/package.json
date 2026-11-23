@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@moodle-mcp/shared": "workspace:*",
-    "svelte": "5.58.0",
+    "svelte": "5.59.0",
     "zxing-wasm": "3.1.7"
   },
   "devDependencies": {
