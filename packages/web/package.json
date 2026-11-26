@@ -14,7 +14,7 @@
     "zxing-wasm": "3.1.7"
   },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@sveltejs/vite-plugin-svelte": "7.3.2",
     "@tailwindcss/vite": "4.3.5",
     "@tsconfig/svelte": "5.0.9",
     "svelte-check": "4.7.8",
